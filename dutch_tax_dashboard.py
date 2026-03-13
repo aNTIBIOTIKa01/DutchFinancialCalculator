@@ -13,100 +13,138 @@ import plotly.graph_objects as go
 from io import BytesIO
 import os, json
 
-_HERE        = os.path.dirname(os.path.abspath(__file__))
-SAVE_FILE    = os.path.join(_HERE, "dutch_dashboard_settings.csv")
-ACTUALS_FILE = os.path.join(_HERE, "dutch_dashboard_actuals.csv")
+# ── No server-side file storage — all persistence is via download/upload ─────────
+# Each browser session is independent; multiple users can run simultaneously.
 
 DEFAULTS = dict(
-    inc_s=72000, partner=True, inc_p=92000, sal_growth=0.0,
-    sal_growth_p=0.0,
+    # Income
+    inc_s=60000, partner=False, inc_p=60000, sal_growth=0.02,
+    sal_growth_p=0.02,
     ab_mode=False,
-    rs=2026, re=2029,
-    rs_s_start=2026, rs_p_start=2026,  # first year ruling was applied (drives rate schedule)                    # legacy (kept for CSV compat)
-    ruling_s=True, rs_s=2026, re_s=2029, # your ruling
-    ruling_p=False, rs_p=2026, re_p=2029, # partner ruling
-    rent=1850, by=2026, bm=7,
-    house_price=550000, dp=0.10, mort_rate=0.045, mort_type="Annuity (annuïteit)",
-    hi=420, cf=100, ci=100, gr=400, ot=300,
-    utilities=200, phone=50, subscriptions=50, gym=40, dog=150,
-    savings=80000, n_years=5, ha=0.03, ir=0.05,
+    # 30% ruling
+    rs=2026, re=2031,
+    rs_s_start=2026, rs_p_start=2026,
+    ruling_s=False, rs_s=2026, re_s=2031,
+    ruling_p=False,  rs_p=2026, re_p=2031,
+    # Housing
+    rent=1500, by=2027, bm=1,
+    house_price=400000, dp=0.10, mort_rate=0.040, mort_type="Annuity (annuïteit)",
+    # Expenses
+    hi=150, cf=80, ci=80, gr=350, ot=250,
+    utilities=150, phone=40, subscriptions=40, gym=30, dog=0,
+    # Projection
+    savings=50000, n_years=5, ha=0.03, ir=0.05,
     global_inflation=0.0,
-    sell_house=False, sy=2031, sm=1,
-    n_kdv=0, n_bso=0, kdv_hrs=None, bso_hrs=None,   # kinderopvangtoeslag
+    # House sale
+    sell_house=False, sy=2032, sm=1,
+    # Childcare
+    n_kdv=0, n_bso=0, kdv_hrs=None, bso_hrs=None,
     kdv_rate=None, bso_rate=None,
     kot_start_ym="2027-01", kot_end_ym="",
+    # Future expenses & notes
     future_expenses=[],
     exp_notes={},
     exp_growth={},
-    hist_start="2026-01", hist_end="2026-03",
+    # Actuals date range
+    hist_start="2026-01", hist_end="2026-12",
+    # Net worth
     net_worth_start=0,
     scenario_label="",
 )
 
-def load_settings():
-    """Load scenario A & B settings from CSV. Returns (dict_A, dict_B)."""
-    if not os.path.exists(SAVE_FILE):
-        return DEFAULTS.copy(), DEFAULTS.copy()
-    try:
-        df = pd.read_csv(SAVE_FILE, index_col=0)
-        def parse_row(col):
-            d = DEFAULTS.copy()
-            if col in df.columns:
-                for k, v in df[col].items():
-                    try:
-                        parsed = json.loads(v)
-                    except Exception:
-                        parsed = v
-                    if k == "future_expenses":
-                        d[k] = parsed if isinstance(parsed, list) else []
-                    elif k in ("exp_notes", "exp_growth"):
-                        d[k] = parsed if isinstance(parsed, dict) else {}
-                    elif k in d:
-                        default_val = d[k]
-                        if isinstance(default_val, bool):
-                            d[k] = bool(int(parsed))
-                        elif default_val is None:
-                            # None-typed defaults (kdv_hrs, bso_hrs, kdv_rate, bso_rate):
-                            # preserve None if the saved value is the string "null" or empty,
-                            # otherwise store as float
-                            if parsed is None or parsed == "" or parsed == "None":
-                                d[k] = None
-                            else:
-                                try:
-                                    d[k] = float(parsed)
-                                except (ValueError, TypeError):
-                                    d[k] = None
-                        else:
-                            try:
-                                d[k] = type(default_val)(parsed)
-                            except (ValueError, TypeError):
-                                d[k] = default_val  # fall back to default on bad data
+# ── Settings serialisation helpers ───────────────────────────────────────────────
+
+def _enc(v):
+    """Encode a settings value for CSV storage."""
+    if v is None:
+        return json.dumps(None)
+    if isinstance(v, (bool, list, dict)):
+        return json.dumps(v)
+    return v
+
+def _parse_settings_df(df):
+    """Parse a settings DataFrame (index=keys, columns A/B) into two dicts."""
+    def parse_row(col):
+        d = DEFAULTS.copy()
+        if col not in df.columns:
             return d
-        return parse_row("A"), parse_row("B")
+        for k, v in df[col].items():
+            try:
+                parsed = json.loads(v)
+            except Exception:
+                parsed = v
+            if k == "future_expenses":
+                d[k] = parsed if isinstance(parsed, list) else []
+            elif k in ("exp_notes", "exp_growth"):
+                d[k] = parsed if isinstance(parsed, dict) else {}
+            elif k in d:
+                default_val = d[k]
+                if isinstance(default_val, bool):
+                    d[k] = bool(int(parsed))
+                elif default_val is None:
+                    if parsed is None or parsed in ("", "None"):
+                        d[k] = None
+                    else:
+                        try:
+                            d[k] = float(parsed)
+                        except (ValueError, TypeError):
+                            d[k] = None
+                else:
+                    try:
+                        d[k] = type(default_val)(parsed)
+                    except (ValueError, TypeError):
+                        d[k] = default_val
+        return d
+    return parse_row("A"), parse_row("B")
+
+def settings_to_csv_bytes(pa, pb) -> bytes:
+    """Serialise scenario A & B dicts to CSV bytes for download."""
+    rows = {k: {"A": _enc(v), "B": _enc(pb.get(k, DEFAULTS.get(k)))}
+            for k, v in pa.items()}
+    return pd.DataFrame(rows).T.to_csv().encode()
+
+def settings_from_uploaded_file(uploaded_file) -> tuple:
+    """Parse an uploaded settings CSV back into (dict_A, dict_B)."""
+    try:
+        df = pd.read_csv(uploaded_file, index_col=0)
+        return _parse_settings_df(df)
     except Exception:
         return DEFAULTS.copy(), DEFAULTS.copy()
 
-def save_settings(pa, pb):
-    """Save scenario A & B dicts to CSV."""
-    def _enc(v):
-        if v is None:
-            return json.dumps(None)           # saves as "null", round-trips cleanly
-        if isinstance(v, (bool, list, dict)):
-            return json.dumps(v)
-        return v
-    rows = {k: {"A": _enc(v), "B": _enc(pb.get(k, DEFAULTS.get(k)))}
-            for k, v in pa.items()}
-    pd.DataFrame(rows).T.to_csv(SAVE_FILE)
+def load_settings():
+    """Return settings from session state (populated by upload or defaults)."""
+    sa = st.session_state.get("saved_A")
+    sb = st.session_state.get("saved_B")
+    if sa is None:
+        sa = DEFAULTS.copy()
+        st.session_state["saved_A"] = sa
+    if sb is None:
+        sb = DEFAULTS.copy()
+        st.session_state["saved_B"] = sb
+    return sa, sb
 
 _ACTUALS_COLS = ["month", "inc_s_actual", "inc_p_actual", "savings_actual", "note"]
 
-def load_actuals():
+def load_actuals() -> pd.DataFrame:
+    """Return the actuals DataFrame stored in session state."""
+    df = st.session_state.get("actuals_df")
+    if df is None or df.empty:
+        return pd.DataFrame(columns=_ACTUALS_COLS)
+    return df.copy()
+
+def save_actuals(df: pd.DataFrame) -> None:
+    """Persist actuals DataFrame to session state."""
+    st.session_state["actuals_df"] = df.copy()
+
+def actuals_to_csv_bytes(df: pd.DataFrame) -> bytes:
+    """Serialise actuals DataFrame to CSV bytes for download."""
+    return df.to_csv(index=False).encode()
+
+def actuals_from_uploaded_file(uploaded_file) -> pd.DataFrame:
+    """Parse an uploaded actuals CSV back into a DataFrame."""
     empty = pd.DataFrame(columns=_ACTUALS_COLS)
-    if not os.path.exists(ACTUALS_FILE):
-        return empty
     try:
-        df = pd.read_csv(ACTUALS_FILE)
-        # Ensure all expected columns exist (backwards-compat with old files)
+        df = pd.read_csv(uploaded_file)
         for col in _ACTUALS_COLS:
             if col not in df.columns:
                 df[col] = None
@@ -114,9 +152,6 @@ def load_actuals():
         return df[_ACTUALS_COLS + extra]
     except Exception:
         return empty
-
-def save_actuals(df):
-    df.to_csv(ACTUALS_FILE, index=False)
 
 def parse_bank_statement(uploaded_file):
     """Parse an ING bank statement CSV (semicolon-delimited).
@@ -664,6 +699,13 @@ with st.sidebar:
         "🔀 **Scenario A/B** — compare two scenarios\n\n"
         "📝 **Actuals** — enter real income & savings\n\n"
         "📋 **Data & Export** — raw tables & Excel download"
+    )
+    st.divider()
+    st.markdown("### 💾 Your data")
+    st.caption(
+        "Settings and actuals are stored **only in your browser session**. "
+        "Use the **⬇️ Download** buttons in the ⚙️ Setup and 📝 Actuals tabs "
+        "to save your data as CSV files, and **⬆️ Upload** to restore them next time."
     )
     st.divider()
     st.caption(
@@ -1296,16 +1338,41 @@ The dashboard automatically applies the correct rate for each year based on your
             sc3.metric("Rent/mo", f"€{p['rent']:,.0f}")
             sc4.metric("Future Mortgage/mo", f"€{mp:,.0f}")
 
-    # ── Save button ──────────────────────────────────────────────────────
+    # ── Save / Load Settings ─────────────────────────────────────────────────
     st.divider()
-    sav_col, info_col = st.columns([1, 3])
-    if sav_col.button("💾 Save Settings to CSV", type="primary", use_container_width=True):
-        save_settings(params["A"], params["B"])
-        st.success(f"✅ Settings saved to `{SAVE_FILE}` — they will reload automatically next run.")
-    if os.path.exists(SAVE_FILE):
-        info_col.info(f"📂 Settings loaded from `{SAVE_FILE}`. Edit above and click Save to update.", icon="ℹ️")
-    else:
-        info_col.caption("No saved settings found — using defaults. Click **Save** to persist your inputs.")
+    st.markdown("### 💾 Save & Load Settings")
+    st.caption(
+        "Your settings are **not stored on the server** — download them to your device "
+        "and re-upload next time to restore everything instantly."
+    )
+    _io_c1, _io_c2 = st.columns(2)
+
+    # Download button — always available, uses current widget values
+    _io_c1.download_button(
+        label="⬇️ Download settings (.csv)",
+        data=settings_to_csv_bytes(params["A"], params["B"]),
+        file_name="dutch_dashboard_settings.csv",
+        mime="text/csv",
+        use_container_width=True,
+        help="Saves all current inputs to a CSV file on your device. "
+             "Re-upload it next session to restore your settings.",
+    )
+
+    # Upload button — applies immediately via session state + rerun
+    _uploaded_settings = _io_c2.file_uploader(
+        "⬆️ Upload settings (.csv)",
+        type=["csv"],
+        key="settings_upload",
+        label_visibility="collapsed",
+        help="Upload a previously downloaded settings CSV to restore your inputs.",
+    )
+    _io_c2.caption("⬆️ Upload a previously saved settings CSV to restore your inputs.")
+    if _uploaded_settings is not None:
+        _sa_new, _sb_new = settings_from_uploaded_file(_uploaded_settings)
+        st.session_state["saved_A"] = _sa_new
+        st.session_state["saved_B"] = _sb_new
+        st.success("✅ Settings loaded — the page will refresh with your saved values.")
+        st.rerun()
 
 # ════════════════════════════════════════════════════════════════════════════════
 # RUN SIMULATIONS (after Setup tab so params are defined)
@@ -2902,31 +2969,28 @@ You can still edit every cell manually after importing.
 
     # ── Buttons row ──────────────────────────────────────────────────────────
     st.divider()
-    btn_col1, btn_col2, btn_col3 = st.columns([2, 2, 6])
+    btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([2, 2, 2, 4])
+
     with btn_col1:
         if st.button("➕ Add Month", help="Unlock one more future month for data entry"):
             st.session_state["act_extra_months"] += 1
             st.rerun()
+
     with btn_col2:
-        if st.button("💾 Save Actuals", type="primary"):
-            # Build a DataFrame from what the user has typed in the widgets
+        if st.button("💾 Save Actuals", type="primary",
+                     help="Saves your entries to this browser session. Download below to keep them permanently."):
+            # Build a DataFrame from what the user typed in the widgets
             widget_df = pd.DataFrame(updated_rows)
             for _c in ["inc_s_actual", "inc_p_actual", "savings_actual"]:
                 widget_df[_c] = pd.to_numeric(widget_df[_c], errors="coerce")
 
-            # Load whatever is already on disk (could contain months outside the
-            # current date-range window that are not shown in the grid)
+            # Merge with any already-saved data (preserves off-screen months)
             existing = load_actuals()
-
-            # Merge: widget values take priority for any month that appears in both
             if existing.empty or "month" not in existing.columns:
                 merged = widget_df.copy()
             else:
-                # Keep disk rows for months not in the current window
                 off_screen = existing[~existing["month"].isin(widget_df["month"])]
-                # Update on-screen rows: start from widget values, fill note from
-                # existing when widget note is blank and disk has one
-                on_screen = widget_df.copy()
+                on_screen  = widget_df.copy()
                 if "note" in existing.columns:
                     disk_notes = existing.set_index("month")["note"]
                     on_screen["note"] = on_screen.apply(
@@ -2936,7 +3000,7 @@ You can still edit every cell manually after importing.
                     )
                 merged = pd.concat([off_screen, on_screen], ignore_index=True)
 
-            # Drop completely empty rows (no income and no savings entered at all)
+            # Drop entirely empty rows
             merged = merged[
                 merged["inc_s_actual"].notna() |
                 merged["inc_p_actual"].notna() |
@@ -2944,8 +3008,35 @@ You can still edit every cell manually after importing.
             ]
             merged = merged.sort_values("month").reset_index(drop=True)
             save_actuals(merged)
-            st.success(f"✅ Saved {len(merged)} months to `{ACTUALS_FILE}`")
+            st.success(f"✅ {len(merged)} months saved to this session. Download below to keep permanently.")
             st.rerun()
+
+    # Download actuals CSV
+    _act_for_dl = load_actuals()
+    with btn_col3:
+        st.download_button(
+            label="⬇️ Download actuals",
+            data=actuals_to_csv_bytes(_act_for_dl) if not _act_for_dl.empty else b"month,inc_s_actual,inc_p_actual,savings_actual,note\n",
+            file_name="dutch_dashboard_actuals.csv",
+            mime="text/csv",
+            use_container_width=True,
+            help="Download your actuals data as a CSV to keep it permanently. Re-upload it next session.",
+        )
+
+    # Upload actuals CSV — shown below the button row for space
+    st.markdown("**⬆️ Restore actuals from file**")
+    _uploaded_actuals = st.file_uploader(
+        "Upload actuals CSV",
+        type=["csv"],
+        key="actuals_upload",
+        label_visibility="collapsed",
+        help="Upload a previously downloaded actuals CSV to restore your data.",
+    )
+    if _uploaded_actuals is not None:
+        _act_restored = actuals_from_uploaded_file(_uploaded_actuals)
+        save_actuals(_act_restored)
+        st.success(f"✅ {len(_act_restored)} months of actuals restored from file.")
+        st.rerun()
 
     # ── Charts ────────────────────────────────────────────────────────────────
     actual_data = pd.DataFrame(updated_rows)
