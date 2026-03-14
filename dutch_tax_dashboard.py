@@ -1995,27 +1995,12 @@ Configure all inputs for your financial scenarios here. Every value you set flow
                         key=f"net_mo_input_{lbl}",
                         help="The amount deposited in your bank account each month after all taxes. "
                              "The dashboard works backwards to find your gross salary.")
-                    # Reverse-calculate gross from net using bisection
-                    _a30_for_rev = sv.get("ruling_s", True) and sv.get("rs_s", sv.get("rs", 2026)) <= 2026 < sv.get("re_s", sv.get("re", 2031))
-                    _target_net_annual = _net_mo_input * 12
-                    _lo, _hi = 1000.0, 500000.0
-                    for _ in range(50):
-                        _mid = (_lo + _hi) / 2
-                        if net_annual_calc(_mid, 2026, _a30_for_rev) < _target_net_annual:
-                            _lo = _mid
-                        else:
-                            _hi = _mid
-                    inc_s_raw = round(_lo)
-                    _implied_net = net_annual_calc(inc_s_raw, 2026, _a30_for_rev) / 12
-                    st.caption(
-                        f"Implied gross salary: **€{inc_s_raw:,.0f}/yr** · "
-                        f"Calculated net: **€{_implied_net:,.0f}/mo** "
-                        f"(target: €{_net_mo_input:,.0f}/mo)"
-                    )
+                    inc_s_raw = sv.get("inc_s", 72000)   # placeholder; replaced after ruling
                 else:
                     inc_s_raw = c1.number_input("Your gross income (€/yr)",
                         value=sv.get("inc_s", 72000), step=1000, key=f"inc_s_{lbl}",
                         help="Your annual gross salary before tax. Used to calculate Box 1 tax, ZVW, and all tax credits.")
+                    _net_mo_input = 0   # unused when entering gross
                 sal_growth = c2.slider("Annual salary growth (%)",
                     0.0, 10.0, sv.get("sal_growth", 0.0) * 100, 0.5, key=f"sg_{lbl}",
                     help="Compound annual salary growth from 2026. 2–3% tracks Dutch inflation and CAO agreements.") / 100
@@ -2091,6 +2076,26 @@ The dashboard automatically applies the correct rate for each year based on your
                         help="Auto-computed from your start year. Duration is always 5 years per Dutch law.")
                     rs, re = rs_s, re_s
 
+                # ── Reverse-calculate gross from net now that ruling state is known ──
+                if _use_net_input:
+                    _a30_for_rev = ruling_s and rs_s <= 2026 < re_s
+                    _target_net_annual = _net_mo_input * 12
+                    _lo, _hi = 1000.0, 500000.0
+                    for _ in range(50):
+                        _mid = (_lo + _hi) / 2
+                        if net_annual_calc(_mid, 2026, _a30_for_rev) < _target_net_annual:
+                            _lo = _mid
+                        else:
+                            _hi = _mid
+                    inc_s_raw = round(_lo)
+                    _implied_net = net_annual_calc(inc_s_raw, 2026, _a30_for_rev) / 12
+                    st.caption(
+                        f"Implied gross: **€{inc_s_raw:,.0f}/yr** · "
+                        f"Net check: **€{_implied_net:,.0f}/mo** "
+                        f"(target: €{_net_mo_input:,.0f}/mo) · "
+                        f"30% ruling: **{"on" if _a30_for_rev else "off"}**"
+                    )
+
                 partner = st.checkbox("Include partner income",
                     value=sv.get("partner", True), key=f"pt_{lbl}")
                 inc_p = 0
@@ -2116,23 +2121,9 @@ The dashboard automatically applies the correct rate for each year based on your
                             min_value=500, max_value=30000,
                             key=f"net_mo_input_p_{lbl}",
                             help="Monthly amount deposited in your partner's bank account after all taxes.")
-                        _a30_for_rev_p = sv.get("ruling_p", False) and sv.get("rs_p_start", 2026) <= 2026 < sv.get("re_p", sv.get("re", 2031))
-                        _target_net_p = _net_mo_input_p * 12
-                        _lo_p, _hi_p = 1000.0, 500000.0
-                        for _ in range(50):
-                            _mid_p = (_lo_p + _hi_p) / 2
-                            if net_annual_calc(_mid_p, 2026, _a30_for_rev_p) < _target_net_p:
-                                _lo_p = _mid_p
-                            else:
-                                _hi_p = _mid_p
-                        inc_p = round(_lo_p)
-                        _implied_net_p = net_annual_calc(inc_p, 2026, _a30_for_rev_p) / 12
-                        st.caption(
-                            f"Partner implied gross: **€{inc_p:,.0f}/yr** · "
-                            f"Calculated net: **€{_implied_net_p:,.0f}/mo** "
-                            f"(target: €{_net_mo_input_p:,.0f}/mo)"
-                        )
+                        inc_p = sv.get("inc_p", 92000)   # placeholder; replaced after ruling
                     else:
+                        _net_mo_input_p = 0   # unused
                         inc_p = _pi1.number_input("Partner gross income (€/yr)",
                             value=sv.get("inc_p", 92000), step=1000, key=f"inc_p_{lbl}",
                             help="Partner's annual gross salary. Taxed independently — each person has their own brackets and credits.")
@@ -2165,6 +2156,26 @@ The dashboard automatically applies the correct rate for each year based on your
                             help="Auto-computed from partner's start year.")
                     else:
                         rs_p_start = sv.get("rs_p_start", 2026)
+
+                    # ── Reverse-calculate partner gross now that ruling state is known ──
+                    if _use_net_input_p:
+                        _a30_for_rev_p = ruling_p and rs_p <= 2026 < re_p
+                        _target_net_p  = _net_mo_input_p * 12
+                        _lo_p, _hi_p   = 1000.0, 500000.0
+                        for _ in range(50):
+                            _mid_p = (_lo_p + _hi_p) / 2
+                            if net_annual_calc(_mid_p, 2026, _a30_for_rev_p) < _target_net_p:
+                                _lo_p = _mid_p
+                            else:
+                                _hi_p = _mid_p
+                        inc_p = round(_lo_p)
+                        _implied_net_p = net_annual_calc(inc_p, 2026, _a30_for_rev_p) / 12
+                        st.caption(
+                            f"Partner implied gross: **€{inc_p:,.0f}/yr** · "
+                            f"Net check: **€{_implied_net_p:,.0f}/mo** "
+                            f"(target: €{_net_mo_input_p:,.0f}/mo) · "
+                            f"30% ruling: **{"on" if _a30_for_rev_p else "off"}**"
+                        )
 
                 # KOT defaults — inputs moved to Monthly Expenses section
                 n_kdv        = sv.get("n_kdv",        0)
