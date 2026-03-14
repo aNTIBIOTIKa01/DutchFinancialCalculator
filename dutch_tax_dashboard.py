@@ -949,7 +949,9 @@ def _paid_gate(label: str = "Pro feature", icon: str = "🔒", compact: bool = F
 
 DEFAULTS = dict(
     # Income
-    inc_s=60000, inc_s_incl_vg=False, use_net_input=False, net_mo_input=3500, partner=False, inc_p=60000, sal_growth=0.02,
+    inc_s=60000, inc_s_incl_vg=False, use_net_input=False, net_mo_input=3500,
+    use_net_input_p=False, net_mo_input_p=3500,
+    partner=False, inc_p=60000, sal_growth=0.02,
     sal_growth_p=0.02,
     ab_mode=False,
     # 30% ruling
@@ -2018,33 +2020,32 @@ Configure all inputs for your financial scenarios here. Every value you set flow
                     0.0, 10.0, sv.get("sal_growth", 0.0) * 100, 0.5, key=f"sg_{lbl}",
                     help="Compound annual salary growth from 2026. 2–3% tracks Dutch inflation and CAO agreements.") / 100
 
-                # ── Vakantiegeld (holiday allowance) ─────────────────────────
-                inc_s_incl_vg = st.checkbox(
-                    "Income includes vakantiegeld (8% holiday allowance)",
-                    value=sv.get("inc_s_incl_vg", False),
-                    key=f"inc_s_incl_vg_{lbl}",
-                    help=(
-                        "In the Netherlands, most employees receive 8% vakantiegeld (holiday allowance) "
-                        "on top of their base salary, typically paid in May.\n\n"
-                        "**If ticked:** your input already includes the 8% — the dashboard divides by 1.08 "
-                        "to derive the base salary used for monthly income calculations (so each month is "
-                        "correctly represented, not inflated by the one-off May payment).\n\n"
-                        "**If unticked:** your input is the base salary. The dashboard adds the 8% "
-                        "automatically in May as a one-off month.\n\n"
-                        "Example: if your contract says €72,000/yr including vakantiegeld, tick this box. "
-                        "Your base salary becomes €72,000 / 1.08 ≈ €66,667 and in May you receive an "
-                        "extra €5,333 on top of your normal monthly pay."
+                # ── Vakantiegeld (holiday allowance) — hidden when using net input
+                if not _use_net_input:
+                    inc_s_incl_vg = st.checkbox(
+                        "Income includes vakantiegeld (8% holiday allowance)",
+                        value=sv.get("inc_s_incl_vg", False),
+                        key=f"inc_s_incl_vg_{lbl}",
+                        help=(
+                            "In the Netherlands, most employees receive 8% vakantiegeld (holiday allowance) "
+                            "on top of their base salary, typically paid in May.\n\n"
+                            "**If ticked:** your input already includes the 8% — the dashboard divides by 1.08 "
+                            "to derive the base salary used for monthly income calculations.\n\n"
+                            "**If unticked:** your input is the base salary."
+                        )
                     )
-                )
-                if inc_s_incl_vg:
-                    inc_s = inc_s_raw / 1.08   # strip out the 8% vakantiegeld
-                    _vg_amount = inc_s_raw - inc_s
-                    st.caption(
-                        f"Base salary (ex vakantiegeld): **€{inc_s:,.0f}/yr** · "
-                        f"Vakantiegeld (May bonus): **€{_vg_amount:,.0f}** · "
-                        f"Monthly base: **€{inc_s/12:,.0f}**"
-                    )
+                    if inc_s_incl_vg:
+                        inc_s = inc_s_raw / 1.08
+                        _vg_amount = inc_s_raw - inc_s
+                        st.caption(
+                            f"Base salary (ex vakantiegeld): **€{inc_s:,.0f}/yr** · "
+                            f"Vakantiegeld (May bonus): **€{_vg_amount:,.0f}** · "
+                            f"Monthly base: **€{inc_s/12:,.0f}**"
+                        )
+                    else:
+                        inc_s = inc_s_raw
                 else:
+                    inc_s_incl_vg = False   # net input already accounts for taxes
                     inc_s = inc_s_raw
 
                 # ── Your 30% ruling ──────────────────────────────────────────
@@ -2095,11 +2096,46 @@ The dashboard automatically applies the correct rate for each year based on your
                 inc_p = 0
                 sal_growth_p = 0.0   # default when no partner
                 ruling_p, rs_p, re_p, rs_p_start = False, sv.get("rs_p", 2026), sv.get("re_p", 2029), sv.get("rs_p_start", 2026)
+                _use_net_input_p = False   # default; overridden below when partner=True
                 if partner:
+                    # ── Partner income entry mode ─────────────────────────────
+                    _use_net_input_p = st.toggle(
+                        "Enter partner's monthly net income (what arrives in their bank)",
+                        value=sv.get("use_net_input_p", False),
+                        key=f"use_net_input_p_{lbl}",
+                        help=(
+                            "Tick this to enter your partner's monthly net take-home pay instead of "
+                            "their annual gross salary. The dashboard reverse-calculates the gross "
+                            "using Dutch tax rules so projections remain tax-accurate."
+                        )
+                    )
                     _pi1, _pi2 = st.columns(2)
-                    inc_p = _pi1.number_input("Partner gross income (€/yr)",
-                        value=sv.get("inc_p", 92000), step=1000, key=f"inc_p_{lbl}",
-                        help="Partner's annual gross salary. Taxed independently — each person has their own brackets and credits.")
+                    if _use_net_input_p:
+                        _net_mo_input_p = _pi1.number_input("Partner monthly net income (€/mo)",
+                            value=int(sv.get("net_mo_input_p", 3500)), step=50,
+                            min_value=500, max_value=30000,
+                            key=f"net_mo_input_p_{lbl}",
+                            help="Monthly amount deposited in your partner's bank account after all taxes.")
+                        _a30_for_rev_p = sv.get("ruling_p", False) and sv.get("rs_p_start", 2026) <= 2026 < sv.get("re_p", sv.get("re", 2031))
+                        _target_net_p = _net_mo_input_p * 12
+                        _lo_p, _hi_p = 1000.0, 500000.0
+                        for _ in range(50):
+                            _mid_p = (_lo_p + _hi_p) / 2
+                            if net_annual_calc(_mid_p, 2026, _a30_for_rev_p) < _target_net_p:
+                                _lo_p = _mid_p
+                            else:
+                                _hi_p = _mid_p
+                        inc_p = round(_lo_p)
+                        _implied_net_p = net_annual_calc(inc_p, 2026, _a30_for_rev_p) / 12
+                        st.caption(
+                            f"Partner implied gross: **€{inc_p:,.0f}/yr** · "
+                            f"Calculated net: **€{_implied_net_p:,.0f}/mo** "
+                            f"(target: €{_net_mo_input_p:,.0f}/mo)"
+                        )
+                    else:
+                        inc_p = _pi1.number_input("Partner gross income (€/yr)",
+                            value=sv.get("inc_p", 92000), step=1000, key=f"inc_p_{lbl}",
+                            help="Partner's annual gross salary. Taxed independently — each person has their own brackets and credits.")
                     sal_growth_p = _pi2.slider("Partner salary growth (%)",
                         0.0, 10.0, sv.get("sal_growth_p", 0.0) * 100, 0.5, key=f"sg_p_{lbl}",
                         help="Compound annual salary growth for your partner from 2026. Can differ from yours if on a different career trajectory or CAO.") / 100
@@ -2542,6 +2578,8 @@ The dashboard automatically applies the correct rate for each year based on your
                 inc_s=inc_s, inc_s_incl_vg=inc_s_incl_vg,
                 use_net_input=_use_net_input,
                 net_mo_input=sv.get('net_mo_input', 3500),
+                use_net_input_p=_use_net_input_p if partner else False,
+                net_mo_input_p=sv.get('net_mo_input_p', 3500),
                 partner=partner, inc_p=inc_p,
                 n_kdv=n_kdv, n_bso=n_bso, kdv_hrs=kdv_hrs, bso_hrs=bso_hrs,
                 kdv_rate=kdv_rate, bso_rate=bso_rate,
@@ -2873,7 +2911,7 @@ with tabs[1]:
     _km2.metric("💸 Total Expenses", f"€{cur_exp:,.0f}",
         help=f"All fixed expenses in {cur_lbl}: housing, categories from Setup, net of MRI and subsidy credits.")
     _sav_sign = "surplus" if cur_sav >= 0 else "deficit"
-    _km3.metric("🏦 Monthly Savings", f"€{cur_sav:,.0f}",
+    _km3.metric("🏦 Potential Savings", f"€{cur_sav:,.0f}",
         delta=_sav_sign, delta_color="normal" if cur_sav >= 0 else "inverse",
         help=f"Net income minus total expenses in {cur_lbl}.")
     _km4, _km5 = st.columns(2)
