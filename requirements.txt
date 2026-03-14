@@ -1,5 +1,22 @@
+# 🇳🇱 Dutch Financial Dashboard — Python dependencies
+# Install with: pip install -r requirements.txt
+# Python 3.10+ required
+
+# ── Web framework ────────────────────────────────────────────────────────────
 streamlit>=1.35.0
-pandas>=2.0.0
+
+# ── Data & numerics ──────────────────────────────────────────────────────────
+pandas>=2.1.0
 numpy>=1.26.0
-plotly>=5.20.0
+
+# ── Charts (interactive UI) ──────────────────────────────────────────────────
+plotly>=5.18.0
+
+# ── Charts (PDF export — embedded PNG images) ────────────────────────────────
+matplotlib>=3.8.0
+
+# ── PDF generation ───────────────────────────────────────────────────────────
+reportlab>=4.0.0
+
+# ── Excel export ─────────────────────────────────────────────────────────────
 openpyxl>=3.1.0

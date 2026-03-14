@@ -331,17 +331,17 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
     fixed_now = sum(p.get(k,0) for k in
                     ["hi","cf","ci","gr","ot","utilities","phone","subscriptions","gym","dog"])
     story.append(kpi_row([
-        ("Gross income / yr",  f"\u20ac{p['inc_s']:,.0f}",          DARK),
-        ("Net income / mo",    f"\u20ac{net_s_now+net_p_now:,.0f}", GREEN),
-        ("House price",        f"\u20ac{p['house_price']:,.0f}",     BLUE),
-        ("Mortgage / mo",      f"\u20ac{mp_now:,.0f}",              RED),
+        ("Gross income / yr",  f"\u20ac\u202f{p['inc_s']:,.0f}",          DARK),
+        ("Net income / mo",    f"\u20ac\u202f{net_s_now+net_p_now:,.0f}", GREEN),
+        ("House price",        f"\u20ac\u202f{p['house_price']:,.0f}",     BLUE),
+        ("Mortgage / mo",      f"\u20ac\u202f{mp_now:,.0f}",              RED),
     ]))
     story.append(Spacer(1,0.15*cm))
     story.append(kpi_row([
-        ("Fixed expenses / mo",f"\u20ac{fixed_now:,.0f}",           AMBER),
-        ("Starting savings",   f"\u20ac{p.get('savings',0):,.0f}",  TEAL),
+        ("Fixed expenses / mo",f"\u20ac\u202f{fixed_now:,.0f}",           AMBER),
+        ("Starting savings",   f"\u20ac\u202f{p.get('savings',0):,.0f}",  TEAL),
         ("Retirement age",     f"{ret_age_r}",                      MID),
-        ("Capital needed",     f"\u20ac{capital_needed_r:,.0f}",
+        ("Capital needed",     f"\u20ac\u202f{capital_needed_r:,.0f}",
          GREEN if proj_cap_ret >= capital_needed_r else RED),
     ]))
     story.append(Spacer(1,0.5*cm))
@@ -413,8 +413,8 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
         gross = p["inc_s"] * (1 + sg) ** (yr - 2026)
         net_a = net_annual_calc(gross, yr, a30)
         r_tax.append([str(yr), "\u2713" if a30 else "\u2014",
-                      f"\u20ac{gross:,.0f}", f"\u20ac{net_a:,.0f}",
-                      f"\u20ac{net_a/12:,.0f}", f"{(gross-net_a)/gross*100:.1f}%"])
+                      f"\u20ac\u202f{gross:,.0f}", f"\u20ac\u202f{net_a:,.0f}",
+                      f"\u20ac\u202f{net_a/12:,.0f}", f"{(gross-net_a)/gross*100:.1f}%"])
     story.append(dtbl(h_tax, r_tax, [W*0.10,W*0.13,W*0.20,W*0.20,W*0.20,W*0.17]))
     story.append(Spacer(1,0.25*cm))
 
@@ -424,7 +424,7 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
         drop    = net_on - net_off
         story.append(Paragraph(
             f"\u26a0\ufe0f  30% ruling expires Jan {re_yr}: monthly net drops "
-            f"\u20ac{drop:,.0f}  (\u20ac{net_on:,.0f} \u2192 \u20ac{net_off:,.0f}/mo).", sWRN))
+            f"\u20ac\u202f{drop:,.0f}  (\u20ac\u202f{net_on:,.0f} \u2192 \u20ac\u202f{net_off:,.0f}/mo).", sWRN))
 
     # CHART: net income + expenses + savings
     _dates_num = list(range(len(df_m_a)))
@@ -441,7 +441,7 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
         step = max(1, len(_dates_num)//8)
         ax.set_xticks(_dates_num[::step])
         ax.set_xticklabels(_date_lbls[::step], rotation=30, ha="right", fontsize=6.5)
-        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x:,.0f}")
+        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac\u202f{x:,.0f}")
         ax.legend(fontsize=7, framealpha=0.9)
         ax.set_title("Monthly Net Income, Expenses & Savings", fontsize=9, fontweight="bold",
                      color="#1e293b", pad=6)
@@ -454,9 +454,9 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
     r_pnl = []
     for _, row in df_m_a.head(24).iterrows():
         r_pnl.append([row["Date"].strftime("%b %Y"),
-                      f"\u20ac{row['Total Net']:,.0f}", f"\u20ac{row['Total Expenses']:,.0f}",
-                      f"\u20ac{row['Housing Cost']:,.0f}", f"\u20ac{row['MRI Benefit']:,.0f}",
-                      f"\u20ac{row['Net Saving']:,.0f}"])
+                      f"\u20ac\u202f{row['Total Net']:,.0f}", f"\u20ac\u202f{row['Total Expenses']:,.0f}",
+                      f"\u20ac\u202f{row['Housing Cost']:,.0f}", f"\u20ac\u202f{row['MRI Benefit']:,.0f}",
+                      f"\u20ac\u202f{row['Net Saving']:,.0f}"])
     story.append(dtbl(h_pnl, r_pnl, [W*0.14,W*0.16,W*0.17,W*0.16,W*0.16,W*0.21]))
     story.append(PageBreak())
 
@@ -470,11 +470,11 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
     fin   = dw.iloc[-1]
     delta = fin["Wealth Delta"]
     story.append(kpi_row([
-        ("End Wealth \u2014 Buy",  f"\u20ac{fin['Total Wealth (Buy)']:,.0f}",  GREEN),
-        ("End Wealth \u2014 Rent", f"\u20ac{fin['Total Wealth (Rent)']:,.0f}", BLUE),
-        ("Buy vs Rent Edge",("+" if delta>=0 else "")+f"\u20ac{delta:,.0f}",
+        ("End Wealth \u2014 Buy",  f"\u20ac\u202f{fin['Total Wealth (Buy)']:,.0f}",  GREEN),
+        ("End Wealth \u2014 Rent", f"\u20ac\u202f{fin['Total Wealth (Rent)']:,.0f}", BLUE),
+        ("Buy vs Rent Edge",("+" if delta>=0 else "")+f"\u20ac\u202f{delta:,.0f}",
          GREEN if delta>=0 else RED),
-        ("Home Equity (end)", f"\u20ac{fin['Home Equity']:,.0f}", AMBER),
+        ("Home Equity (end)", f"\u20ac\u202f{fin['Home Equity']:,.0f}", AMBER),
     ]))
     story.append(Spacer(1,0.2*cm))
 
@@ -503,7 +503,7 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
         step = max(1, len(_dw_dates)//8)
         ax.set_xticks(_dw_dates[::step])
         ax.set_xticklabels(_dw_lbls[::step], rotation=30, ha="right", fontsize=6.5)
-        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x/1e3:.0f}k")
+        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac\u202f{x/1e3:.0f}k")
         ax.legend(fontsize=7, framealpha=0.9)
         ax.set_title("Total Net Worth: Buy vs Rent", fontsize=9, fontweight="bold",
                      color="#1e293b", pad=6)
@@ -518,11 +518,11 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
     for _, row in daw.iterrows():
         edge = row["Total Wealth (Buy)"] - row["Total Wealth (Rent)"]
         r_w.append([str(int(row["Year"])),
-                    f"\u20ac{row['House Value']:,.0f}", f"\u20ac{row['Mortgage Balance']:,.0f}",
-                    f"\u20ac{row['Home Equity']:,.0f}", f"\u20ac{row['Cash (Buy)']:,.0f}",
-                    f"\u20ac{row['Total Wealth (Buy)']:,.0f}",
-                    f"\u20ac{row['Total Wealth (Rent)']:,.0f}",
-                    ("+" if edge>=0 else "")+f"\u20ac{edge:,.0f}"])
+                    f"\u20ac\u202f{row['House Value']:,.0f}", f"\u20ac\u202f{row['Mortgage Balance']:,.0f}",
+                    f"\u20ac\u202f{row['Home Equity']:,.0f}", f"\u20ac\u202f{row['Cash (Buy)']:,.0f}",
+                    f"\u20ac\u202f{row['Total Wealth (Buy)']:,.0f}",
+                    f"\u20ac\u202f{row['Total Wealth (Rent)']:,.0f}",
+                    ("+" if edge>=0 else "")+f"\u20ac\u202f{edge:,.0f}"])
     story.append(dtbl(h_w, r_w, [W*0.09,W*0.13,W*0.12,W*0.12,W*0.12,W*0.13,W*0.13,W*0.16]))
     story.append(PageBreak())
 
@@ -541,10 +541,10 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
     lin_net1 = df_lin["Net_Payment"].iloc[0]
     ann_mri1 = df_ann["MRI_Benefit"].iloc[0]
     story.append(kpi_row([
-        ("Loan Amount",            f"\u20ac{loan:,.0f}",     BLUE),
-        ("Annuity Net/mo (mo 1)",  f"\u20ac{ann_net1:,.0f}", GREEN),
-        ("Linear Net/mo (mo 1)",   f"\u20ac{lin_net1:,.0f}", AMBER),
-        ("MRI Benefit/mo (mo 1)",  f"\u20ac{ann_mri1:,.0f}", TEAL),
+        ("Loan Amount",            f"\u20ac\u202f{loan:,.0f}",     BLUE),
+        ("Annuity Net/mo (mo 1)",  f"\u20ac\u202f{ann_net1:,.0f}", GREEN),
+        ("Linear Net/mo (mo 1)",   f"\u20ac\u202f{lin_net1:,.0f}", AMBER),
+        ("MRI Benefit/mo (mo 1)",  f"\u20ac\u202f{ann_mri1:,.0f}", TEAL),
     ]))
     story.append(Spacer(1,0.2*cm))
 
@@ -563,7 +563,7 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
         step = max(1, len(_ann_d)//8)
         ax.set_xticks(_ann_d[::step])
         ax.set_xticklabels(_mort_lbls[::step], rotation=30, ha="right", fontsize=6.5)
-        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x:,.0f}")
+        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac\u202f{x:,.0f}")
         ax.legend(fontsize=7, framealpha=0.9)
         ax.set_title("Net Monthly Mortgage Payment vs MRI Tax Benefit", fontsize=9,
                      fontweight="bold", color="#1e293b", pad=6)
@@ -583,19 +583,19 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
     r_m   = []
     for _, row in df_yr.iterrows():
         r_m.append([str(int(row["Year"])),
-                    f"\u20ac{row['Ann_Pay']:,.0f}", f"\u20ac{row['Ann_Int']:,.0f}",
-                    f"\u20ac{row['Ann_MRI']:,.0f}", f"\u20ac{row['Ann_Bal']:,.0f}",
-                    f"\u20ac{row['Lin_Pay']:,.0f}", f"\u20ac{row['Lin_Int']:,.0f}",
-                    f"\u20ac{row['Lin_MRI']:,.0f}", f"\u20ac{row['Lin_Bal']:,.0f}"])
+                    f"\u20ac\u202f{row['Ann_Pay']:,.0f}", f"\u20ac\u202f{row['Ann_Int']:,.0f}",
+                    f"\u20ac\u202f{row['Ann_MRI']:,.0f}", f"\u20ac\u202f{row['Ann_Bal']:,.0f}",
+                    f"\u20ac\u202f{row['Lin_Pay']:,.0f}", f"\u20ac\u202f{row['Lin_Int']:,.0f}",
+                    f"\u20ac\u202f{row['Lin_MRI']:,.0f}", f"\u20ac\u202f{row['Lin_Bal']:,.0f}"])
     story.append(dtbl(h_m, r_m, [W*0.09]+[W*0.114]*8))
     ann_30 = df_ann["Payment"].sum() - df_ann["MRI_Benefit"].sum()
     lin_30 = df_lin["Payment"].sum() - df_lin["MRI_Benefit"].sum()
     save30 = ann_30 - lin_30
     story.append(Spacer(1,0.2*cm))
     story.append(kpi_row([
-        ("Annuity net total (30yr)", f"\u20ac{ann_30:,.0f}", RED),
-        ("Linear net total (30yr)",  f"\u20ac{lin_30:,.0f}", GREEN),
-        ("Saving with Linear",       f"\u20ac{save30:,.0f}", AMBER),
+        ("Annuity net total (30yr)", f"\u20ac\u202f{ann_30:,.0f}", RED),
+        ("Linear net total (30yr)",  f"\u20ac\u202f{lin_30:,.0f}", GREEN),
+        ("Saving with Linear",       f"\u20ac\u202f{save30:,.0f}", AMBER),
     ]))
     story.append(PageBreak())
 
@@ -643,18 +643,18 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
     story += embed(_draw_pie, "Proportion of each expense category at start of projection.",
                    h=6.0*cm)
 
-    exp_rows = [[cat, f"\u20ac{val:,.0f}/mo", f"{val/grand*100:.1f}%"]
+    exp_rows = [[cat, f"\u20ac\u202f{val:,.0f}/mo", f"{val/grand*100:.1f}%"]
                 for cat,val in exp_cats if val>0]
-    exp_rows.append(["Mortgage (gross)", f"\u20ac{mp_now:,.0f}/mo",
+    exp_rows.append(["Mortgage (gross)", f"\u20ac\u202f{mp_now:,.0f}/mo",
                      f"{mp_now/grand*100:.1f}%"])
-    exp_rows.append(["\u2014\u2014 TOTAL \u2014\u2014", f"\u20ac{grand:,.0f}/mo", "100%"])
+    exp_rows.append(["\u2014\u2014 TOTAL \u2014\u2014", f"\u20ac\u202f{grand:,.0f}/mo", "100%"])
     story.append(dtbl(["Category","Amount","% of Total"],
                       exp_rows, [W*0.52,W*0.26,W*0.22]))
     fe_list = pa.get("future_expenses",[])
     if fe_list:
         story.append(Spacer(1,0.2*cm))
         story.append(Paragraph("Planned Future Recurring Expenses", sH2))
-        fe_rows = [[fe.get("name","—"), f"\u20ac{fe.get('amount',0):,.0f}/mo",
+        fe_rows = [[fe.get("name","—"), f"\u20ac\u202f{fe.get('amount',0):,.0f}/mo",
                     fe.get("start_ym","—"), fe.get("end_ym","ongoing"),
                     f"{fe.get('growth',0)*100:.1f}%/yr"] for fe in fe_list]
         story.append(dtbl(["Name","Amount","Start","End","Growth"],
@@ -684,7 +684,7 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
             step = max(1, len(_ab_d)//8)
             ax.set_xticks(_ab_d[::step])
             ax.set_xticklabels(_ab_lbls[::step], rotation=30, ha="right", fontsize=6.5)
-            ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x/1e3:.0f}k")
+            ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac\u202f{x/1e3:.0f}k")
             ax.legend(fontsize=7, framealpha=0.9)
             ax.set_title(f"Total Wealth: {sa_name} vs {sb_name}", fontsize=9,
                          fontweight="bold", color="#1e293b", pad=6)
@@ -693,25 +693,25 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
 
         cmp_rows = [
             ["End Wealth (Buy)",
-             f"\u20ac{fin_a['Total Wealth (Buy)']:,.0f}",
-             f"\u20ac{fin_b['Total Wealth (Buy)']:,.0f}",
-             f"\u20ac{fin_a['Total Wealth (Buy)']-fin_b['Total Wealth (Buy)']:,.0f}"],
+             f"\u20ac\u202f{fin_a['Total Wealth (Buy)']:,.0f}",
+             f"\u20ac\u202f{fin_b['Total Wealth (Buy)']:,.0f}",
+             f"\u20ac\u202f{fin_a['Total Wealth (Buy)']-fin_b['Total Wealth (Buy)']:,.0f}"],
             ["End Wealth (Rent)",
-             f"\u20ac{fin_a['Total Wealth (Rent)']:,.0f}",
-             f"\u20ac{fin_b['Total Wealth (Rent)']:,.0f}",
-             f"\u20ac{fin_a['Total Wealth (Rent)']-fin_b['Total Wealth (Rent)']:,.0f}"],
+             f"\u20ac\u202f{fin_a['Total Wealth (Rent)']:,.0f}",
+             f"\u20ac\u202f{fin_b['Total Wealth (Rent)']:,.0f}",
+             f"\u20ac\u202f{fin_a['Total Wealth (Rent)']-fin_b['Total Wealth (Rent)']:,.0f}"],
             ["Home Equity",
-             f"\u20ac{fin_a['Home Equity']:,.0f}",
-             f"\u20ac{fin_b['Home Equity']:,.0f}",
-             f"\u20ac{fin_a['Home Equity']-fin_b['Home Equity']:,.0f}"],
+             f"\u20ac\u202f{fin_a['Home Equity']:,.0f}",
+             f"\u20ac\u202f{fin_b['Home Equity']:,.0f}",
+             f"\u20ac\u202f{fin_a['Home Equity']-fin_b['Home Equity']:,.0f}"],
             ["Avg Net Income/mo",
-             f"\u20ac{df_m_a['Total Net'].mean():,.0f}",
-             f"\u20ac{df_m_b['Total Net'].mean():,.0f}",
-             f"\u20ac{df_m_a['Total Net'].mean()-df_m_b['Total Net'].mean():,.0f}"],
+             f"\u20ac\u202f{df_m_a['Total Net'].mean():,.0f}",
+             f"\u20ac\u202f{df_m_b['Total Net'].mean():,.0f}",
+             f"\u20ac\u202f{df_m_a['Total Net'].mean()-df_m_b['Total Net'].mean():,.0f}"],
             ["Avg Savings/mo",
-             f"\u20ac{df_m_a['Net Saving'].mean():,.0f}",
-             f"\u20ac{df_m_b['Net Saving'].mean():,.0f}",
-             f"\u20ac{df_m_a['Net Saving'].mean()-df_m_b['Net Saving'].mean():,.0f}"],
+             f"\u20ac\u202f{df_m_a['Net Saving'].mean():,.0f}",
+             f"\u20ac\u202f{df_m_b['Net Saving'].mean():,.0f}",
+             f"\u20ac\u202f{df_m_a['Net Saving'].mean()-df_m_b['Net Saving'].mean():,.0f}"],
         ]
         story.append(dtbl([" ", sa_name, sb_name, "Difference"],
                           cmp_rows, [W*0.30,W*0.23,W*0.23,W*0.24]))
@@ -726,21 +726,21 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
     _sec_n += 1
 
     story.append(kpi_row([
-        ("Pension Gap / mo",        f"\u20ac{pension_gap_r:,.0f}",    RED),
-        ("Capital Needed",          f"\u20ac{capital_needed_r:,.0f}", BLUE),
-        ("FIRE Number",             f"\u20ac{fire_r:,.0f}",           AMBER),
-        ("Projected Capital at Ret",f"\u20ac{proj_cap_ret:,.0f}",
+        ("Pension Gap / mo",        f"\u20ac\u202f{pension_gap_r:,.0f}",    RED),
+        ("Capital Needed",          f"\u20ac\u202f{capital_needed_r:,.0f}", BLUE),
+        ("FIRE Number",             f"\u20ac\u202f{fire_r:,.0f}",           AMBER),
+        ("Projected Capital at Ret",f"\u20ac\u202f{proj_cap_ret:,.0f}",
          GREEN if proj_cap_ret >= capital_needed_r else RED),
     ]))
     story.append(Spacer(1,0.2*cm))
     _surplus = proj_cap_ret - capital_needed_r
     if _surplus >= 0:
         story.append(Paragraph(
-            f"\u2705  Projected capital exceeds the capital needed by \u20ac{_surplus:,.0f}. "
+            f"\u2705  Projected capital exceeds the capital needed by \u20ac\u202f{_surplus:,.0f}. "
             f"Your retirement plan looks on track.", sOK))
     else:
         story.append(Paragraph(
-            f"\u26a0\ufe0f  Shortfall of \u20ac{abs(_surplus):,.0f} at retirement age {ret_age_r}. "
+            f"\u26a0\ufe0f  Shortfall of \u20ac\u202f{abs(_surplus):,.0f} at retirement age {ret_age_r}. "
             f"Consider increasing savings, adjusting retirement age, or reducing target income.", sWRN))
 
     # CHART A: Portfolio growth to retirement
@@ -750,14 +750,14 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
         ax.plot(range(len(_port_curve)), _port_curve,
                 color=kw["BLUE"], lw=2.5, label="Projected Portfolio")
         ax.axhline(capital_needed_r, color=kw["RED"], lw=1.5, ls="--",
-                   label=f"Capital Needed  \u20ac{capital_needed_r/1e3:.0f}k")
+                   label=f"Capital Needed  \u20ac\u202f{capital_needed_r/1e3:.0f}k")
         ax.axhline(fire_r, color=kw["AMBER"], lw=1.2, ls=":",
-                   label=f"FIRE Number  \u20ac{fire_r/1e3:.0f}k")
+                   label=f"FIRE Number  \u20ac\u202f{fire_r/1e3:.0f}k")
         xticks = list(range(0, len(_port_curve), max(1, len(_port_curve)//8)))
         ax.set_xticks(xticks)
         ax.set_xticklabels([str(_port_years[i]) for i in xticks],
                            rotation=30, ha="right", fontsize=6.5)
-        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x/1e3:.0f}k")
+        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac\u202f{x/1e3:.0f}k")
         ax.legend(fontsize=7, framealpha=0.9)
         ax.set_title("Portfolio Growth to Retirement", fontsize=9,
                      fontweight="bold", color="#1e293b", pad=6)
@@ -778,7 +778,7 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
         for bar, val in zip(bars, _bar_values):
             ax.text(bar.get_x() + bar.get_width()/2,
                     bar.get_height() + max(_bar_values)*0.02,
-                    f"\u20ac{val:,.0f}", ha="center", va="bottom",
+                    f"\u20ac\u202f{val:,.0f}", ha="center", va="bottom",
                     fontsize=7, color="#1e293b", fontweight="bold")
         ax.set_ylabel("\u20ac / month", fontsize=7)
         ax.set_title("Monthly Retirement Income Sources vs Target",
@@ -803,7 +803,7 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
         ax.set_xticks(xticks)
         ax.set_xticklabels([str(_dep_ages[i]) for i in xticks],
                            rotation=30, ha="right", fontsize=6.5)
-        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x/1e3:.0f}k")
+        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac\u202f{x/1e3:.0f}k")
         ax.legend(fontsize=7, framealpha=0.9)
         ax.set_title("Portfolio Depletion in Retirement (by Age)",
                      fontsize=9, fontweight="bold", color="#1e293b", pad=6)
@@ -822,10 +822,10 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
             _gap = max(_inc - pillar12_r, 0)
             _cap = _gap * 12 / ret_swr_r if ret_swr_r > 0 else 0
             _ok  = proj_cap_ret >= _cap
-            _cell = f"\u20ac{_cap/1e6:.2f}M" if _cap >= 1e6 else f"\u20ac{_cap:,.0f}"
+            _cell = f"\u20ac\u202f{_cap/1e6:.2f}M" if _cap >= 1e6 else f"\u20ac\u202f{_cap:,.0f}"
             _row.append(("\u2713 " if _ok else "! ") + _cell)
         _stbl.append(_row)
-    _s_hdrs = [""] + [f"\u20ac{i:,}/mo" for i in _incomes_s]
+    _s_hdrs = [""] + [f"\u20ac\u202f{i:,}/mo" for i in _incomes_s]
     _s_cw   = [W*0.14] + [W*0.143]*6
     story.append(dtbl(_s_hdrs, _stbl, _s_cw))
     story.append(Paragraph(
@@ -839,26 +839,26 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
     story.append(Paragraph(f"{_sec_n}  \u2014  Setup Summary", sH1))
     story.append(HR(1.0, BLUE))
     setup_rows = [
-        ["Your gross income",   f"\u20ac{p['inc_s']:,.0f}/yr"],
-        ["Partner income",      f"\u20ac{p['inc_p']:,.0f}/yr" if p["partner"] else "\u2014"],
+        ["Your gross income",   f"\u20ac\u202f{p['inc_s']:,.0f}/yr"],
+        ["Partner income",      f"\u20ac\u202f{p['inc_p']:,.0f}/yr" if p["partner"] else "\u2014"],
         ["30% Ruling (You)",    f"{'Yes' if p.get('ruling_s') else 'No'} \u2014 "
                                 f"{p.get('rs_s',p['rs'])}\u2013{p.get('re_s',p['re'])}"],
         ["Salary growth",       f"{p.get('sal_growth',0)*100:.1f}%/yr"],
-        ["Current rent",        f"\u20ac{p['rent']:,.0f}/mo"],
-        ["House price",         f"\u20ac{p['house_price']:,.0f}"],
-        ["Down payment",        f"{p['dp']*100:.0f}%  (\u20ac{p['house_price']*p['dp']:,.0f})"],
+        ["Current rent",        f"\u20ac\u202f{p['rent']:,.0f}/mo"],
+        ["House price",         f"\u20ac\u202f{p['house_price']:,.0f}"],
+        ["Down payment",        f"{p['dp']*100:.0f}%  (\u20ac\u202f{p['house_price']*p['dp']:,.0f})"],
         ["Mortgage rate",       f"{p['mort_rate']*100:.2f}%"],
         ["Mortgage type",       p.get("mort_type","Annuity")],
         ["Purchase date",       f"{p['by']}-{p['bm']:02d}"],
-        ["Starting savings",    f"\u20ac{p.get('savings',0):,.0f}"],
+        ["Starting savings",    f"\u20ac\u202f{p.get('savings',0):,.0f}"],
         ["House appreciation",  f"{p.get('ha',0.03)*100:.1f}%/yr"],
         ["Investment return",   f"{p.get('ir',0.05)*100:.1f}%/yr"],
         ["Projection horizon",  f"{p.get('n_years',5)} years"],
         ["Current age",         str(ret_current_age)],
         ["Retirement age",      str(ret_age_r)],
-        ["Target ret. income",  f"\u20ac{ret_target:,.0f}/mo"],
-        ["AOW expected",        f"\u20ac{ret_aow_r:,.0f}/mo"],
-        ["Occ. pension",        f"\u20ac{ret_pension_r:,.0f}/mo"],
+        ["Target ret. income",  f"\u20ac\u202f{ret_target:,.0f}/mo"],
+        ["AOW expected",        f"\u20ac\u202f{ret_aow_r:,.0f}/mo"],
+        ["Occ. pension",        f"\u20ac\u202f{ret_pension_r:,.0f}/mo"],
         ["Safe withdrawal rate",f"{ret_swr_r*100:.1f}%/yr"],
         ["Pre-ret. return",     f"{ret_ret_pre*100:.1f}%/yr"],
         ["Post-ret. return",    f"{ret_ret_post*100:.1f}%/yr"],
@@ -877,12 +877,17 @@ def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
     return buf.getvalue()
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TIER SYSTEM — Free vs Paid
+# TIER SYSTEM — driven by sidebar toggle
 # ════════════════════════════════════════════════════════════════════════════════
-# Set IS_PAID = True to unlock all features.
-# In production replace this with your auth/payment check.
+# IS_PAID is set from the 'dark_mode' toggle in the sidebar.
+# dark_mode ON  (default) → Free tier  (IS_PAID = False)
+# dark_mode OFF           → Pro tier   (IS_PAID = True)
 
-IS_PAID: bool = True    # ← Pro tier — all features unlocked
+# Initialise session state so IS_PAID is available before the sidebar renders.
+if "dark_mode" not in st.session_state:
+    st.session_state["dark_mode"] = True   # default ON = Free
+
+IS_PAID: bool = not st.session_state["dark_mode"]
 
 def _pro_chart_overlay(section_label: str = "Pro Charts") -> None:
     """Render a styled upgrade banner below greyed-out chart sections (free tier)."""
@@ -944,25 +949,25 @@ def _paid_gate(label: str = "Pro feature", icon: str = "🔒", compact: bool = F
 
 DEFAULTS = dict(
     # Income
-    inc_s=60000, partner=False, inc_p=60000, sal_growth=0.02,
+    inc_s=60000, inc_s_incl_vg=False, use_net_input=False, net_mo_input=3500, partner=False, inc_p=60000, sal_growth=0.02,
     sal_growth_p=0.02,
     ab_mode=False,
     # 30% ruling
-    rs=2026, re=2031,
-    rs_s_start=2026, rs_p_start=2026,
-    ruling_s=False, rs_s=2026, re_s=2031,
-    ruling_p=False,  rs_p=2026, re_p=2031,
+    rs=2023, re=2028,
+    rs_s_start=2023, rs_p_start=2023,
+    ruling_s=True, rs_s=2023, re_s=2028,
+    ruling_p=False,  rs_p=2023, re_p=2028,
     # Housing
     rent=1500, by=2027, bm=1,
-    house_price=400000, dp=0.10, mort_rate=0.040, mort_type="Annuity (annuïteit)",
+    house_price=400000, dp=0.00, mort_rate=0.040, mort_type="Annuity (annuïteit)",
     # Expenses
     hi=150, cf=80, ci=80, gr=350, ot=250,
     utilities=150, phone=40, subscriptions=40, gym=30, dog=0,
     # Projection
-    savings=50000, n_years=5, ha=0.03, ir=0.05,
+    savings=50000, n_years=10, ha=0.03, ir=0.05,
     global_inflation=0.0,
     # House sale
-    sell_house=False, sy=2032, sm=1,
+    sell_house=True, sy=2032, sm=1,
     # Childcare
     n_kdv=0, n_bso=0, kdv_hrs=None, bso_hrs=None,
     kdv_rate=None, bso_rate=None,
@@ -974,8 +979,7 @@ DEFAULTS = dict(
     # Actuals date range
     hist_start="2026-01", hist_end="2026-12",
     # Net worth
-    net_worth_start=0,
-    scenario_label="",
+    scenario_label="Current Situation",
     # Retirement
     ret_age=67, ret_target_income=3500, ret_aow=1450,
     ret_pension=500, ret_return_pre=0.07, ret_return_post=0.04,
@@ -1801,6 +1805,14 @@ with st.sidebar:
 
     # ── Mobile / narrow display toggle ───────────────────────────────────────
     st.markdown("### 📱 Display")
+    st.toggle(
+        "Dark Mode",
+        value=st.session_state.get("dark_mode", True),
+        key="dark_mode",
+        help="Toggle display mode.",
+    )
+    # Re-derive IS_PAID from the current toggle value
+    IS_PAID = not st.session_state["dark_mode"]
     _narrow = st.toggle(
         "Narrow layout (mobile)",
         value=st.session_state.get("narrow_mode", False),
@@ -1890,7 +1902,7 @@ Configure all inputs for your financial scenarios here. Every value you set flow
         """)
 
     # ── How many columns to show ─────────────────────────────────────────────
-    scen_cols = st.columns(2) if ab_mode else st.columns([1, 1])
+    scen_cols = st.columns(2) if ab_mode else [st.container()]
     labels    = ["A", "B"] if ab_mode else ["A"]
 
     params = {}
@@ -1901,16 +1913,19 @@ Configure all inputs for your financial scenarios here. Every value you set flow
         with col:
             color = "#2ecc71" if lbl == "A" else "#3498db"
             _saved_slabel = (saved_A if lbl=="A" else saved_B).get("scenario_label", "")
-            _scen_display = _saved_slabel if _saved_slabel else f"Scenario {lbl}"
+            if IS_PAID:
+                scenario_label = st.text_input(
+                    "Scenario name", value=_saved_slabel if _saved_slabel else "Current Situation",
+                    key=f"scen_label_{lbl}",
+                    placeholder="e.g. 'Buy 2026' or 'Current Situation'",
+                    help="Name for this scenario — shown as the tab heading and on all charts."
+                )
+            else:
+                scenario_label = _saved_slabel if _saved_slabel else "Current Situation"
+            _scen_display = scenario_label if scenario_label.strip() else ("Scenario B" if lbl=="B" else "Current Situation")
             st.markdown(
-                f"<h3 style='color:{color};margin-bottom:0'>{_scen_display}</h3>",
+                f"<h3 style='color:{color};margin-bottom:4px;margin-top:0'>{_scen_display}</h3>",
                 unsafe_allow_html=True
-            )
-            scenario_label = st.text_input(
-                "Scenario name (optional)", value=_saved_slabel,
-                key=f"scen_label_{lbl}",
-                placeholder="e.g. 'Buy 2026' or 'Rent longer'",
-                help="Give this scenario a short name — shown on charts and the A/B comparison tab."
             )
 
 
@@ -1954,13 +1969,83 @@ Configure all inputs for your financial scenarios here. Every value you set flow
             # 1 — PEOPLE & INCOME
             # ════════════════════════════════════════════════════════════════
             with st.expander(_lbl_income, expanded=False):
+                # ── Income entry mode toggle ──────────────────────────────────
+                _use_net_input = st.toggle(
+                    "Enter monthly net income (what arrives in your bank)",
+                    value=sv.get("use_net_input", False),
+                    key=f"use_net_input_{lbl}",
+                    help=(
+                        "Tick this if you prefer to enter the monthly net amount you actually "
+                        "receive in your bank account rather than your annual gross salary.\n\n"
+                        "The dashboard will reverse-calculate your gross salary from the net "
+                        "amount using the Dutch tax rules (Box 1, ZVW, AHK, AK) — so all "
+                        "projections remain tax-accurate.\n\n"
+                        "Note: if you have the 30% ruling active, tick that first so the "
+                        "reverse-calculation uses the correct taxable base."
+                    )
+                )
+
                 c1, c2 = st.columns(2)
-                inc_s = c1.number_input("Your gross income (€/yr)",
-                    value=sv.get("inc_s", 72000), step=1000, key=f"inc_s_{lbl}",
-                    help="Your annual gross salary before tax. Used to calculate Box 1 tax, ZVW, and all tax credits.")
+                if _use_net_input:
+                    _net_mo_input = c1.number_input("Your monthly net income (€/mo)",
+                        value=int(sv.get("net_mo_input", 3500)), step=50,
+                        min_value=500, max_value=30000,
+                        key=f"net_mo_input_{lbl}",
+                        help="The amount deposited in your bank account each month after all taxes. "
+                             "The dashboard works backwards to find your gross salary.")
+                    # Reverse-calculate gross from net using bisection
+                    _a30_for_rev = sv.get("ruling_s", True) and sv.get("rs_s", sv.get("rs", 2026)) <= 2026 < sv.get("re_s", sv.get("re", 2031))
+                    _target_net_annual = _net_mo_input * 12
+                    _lo, _hi = 1000.0, 500000.0
+                    for _ in range(50):
+                        _mid = (_lo + _hi) / 2
+                        if net_annual_calc(_mid, 2026, _a30_for_rev) < _target_net_annual:
+                            _lo = _mid
+                        else:
+                            _hi = _mid
+                    inc_s_raw = round(_lo)
+                    _implied_net = net_annual_calc(inc_s_raw, 2026, _a30_for_rev) / 12
+                    st.caption(
+                        f"Implied gross salary: **€{inc_s_raw:,.0f}/yr** · "
+                        f"Calculated net: **€{_implied_net:,.0f}/mo** "
+                        f"(target: €{_net_mo_input:,.0f}/mo)"
+                    )
+                else:
+                    inc_s_raw = c1.number_input("Your gross income (€/yr)",
+                        value=sv.get("inc_s", 72000), step=1000, key=f"inc_s_{lbl}",
+                        help="Your annual gross salary before tax. Used to calculate Box 1 tax, ZVW, and all tax credits.")
                 sal_growth = c2.slider("Annual salary growth (%)",
                     0.0, 10.0, sv.get("sal_growth", 0.0) * 100, 0.5, key=f"sg_{lbl}",
                     help="Compound annual salary growth from 2026. 2–3% tracks Dutch inflation and CAO agreements.") / 100
+
+                # ── Vakantiegeld (holiday allowance) ─────────────────────────
+                inc_s_incl_vg = st.checkbox(
+                    "Income includes vakantiegeld (8% holiday allowance)",
+                    value=sv.get("inc_s_incl_vg", False),
+                    key=f"inc_s_incl_vg_{lbl}",
+                    help=(
+                        "In the Netherlands, most employees receive 8% vakantiegeld (holiday allowance) "
+                        "on top of their base salary, typically paid in May.\n\n"
+                        "**If ticked:** your input already includes the 8% — the dashboard divides by 1.08 "
+                        "to derive the base salary used for monthly income calculations (so each month is "
+                        "correctly represented, not inflated by the one-off May payment).\n\n"
+                        "**If unticked:** your input is the base salary. The dashboard adds the 8% "
+                        "automatically in May as a one-off month.\n\n"
+                        "Example: if your contract says €72,000/yr including vakantiegeld, tick this box. "
+                        "Your base salary becomes €72,000 / 1.08 ≈ €66,667 and in May you receive an "
+                        "extra €5,333 on top of your normal monthly pay."
+                    )
+                )
+                if inc_s_incl_vg:
+                    inc_s = inc_s_raw / 1.08   # strip out the 8% vakantiegeld
+                    _vg_amount = inc_s_raw - inc_s
+                    st.caption(
+                        f"Base salary (ex vakantiegeld): **€{inc_s:,.0f}/yr** · "
+                        f"Vakantiegeld (May bonus): **€{_vg_amount:,.0f}** · "
+                        f"Monthly base: **€{inc_s/12:,.0f}**"
+                    )
+                else:
+                    inc_s = inc_s_raw
 
                 # ── Your 30% ruling ──────────────────────────────────────────
                 st.markdown("**30% Ruling — You**")
@@ -2279,7 +2364,19 @@ The dashboard automatically applies the correct rate for each year based on your
                     value=sv.get("savings", 80000), step=5000, key=f"sv_{lbl}",
                     help="Total liquid savings at January 2026. Down payment and buying costs are deducted on the purchase date.")
                 n_years = w2.slider("Projection years", 3, 15, sv.get("n_years", 5), key=f"ny_{lbl}",
-                    help="How many years to project from January 2026. The Mortgage tab always shows the full 30-year schedule.")
+                    help="How many years to project from January 2026. The Mortgage tab always shows the full 30-year schedule. "
+                         "If a house sale date is set beyond this window, the projection is automatically extended to include it.")
+                # Auto-extend: warn if sell date is beyond projection
+                if sv.get("sell_house", False):
+                    _sell_yr_chk = sv.get("sy", 2031)
+                    _proj_end_chk = 2026 + n_years
+                    if _sell_yr_chk > _proj_end_chk:
+                        st.info(
+                            f"ℹ️ House sale ({_sell_yr_chk}) is beyond the projection window "
+                            f"(ends {_proj_end_chk}). The projection will be automatically extended to "
+                            f"{_sell_yr_chk + 1} to include the sale.",
+                            icon="📅"
+                        )
                 w3, w4 = st.columns(2)
                 ha = w3.slider("House appreciation (%/yr)", 0.0, 8.0, sv.get("ha", 0.03) * 100, 0.5,
                     key=f"ha_{lbl}",
@@ -2288,23 +2385,12 @@ The dashboard automatically applies the correct rate for each year based on your
                     min_value=0.0, max_value=25.0, step=0.5,
                     key=f"ir_{lbl}",
                     help="Annual return on savings/investments. Global index ETF historically ~7–9%/yr pre-tax.") / 100
-                w5, w6 = st.columns(2)
-                global_inflation = w5.slider("Global inflation floor (%/yr)", 0.0, 5.0,
+                global_inflation = st.slider("Global inflation floor (%/yr)", 0.0, 5.0,
                     sv.get("global_inflation", 0.0) * 100, 0.25,
                     key=f"gi_{lbl}",
                     help="Sets a minimum annual growth rate for ALL expense categories. Any category with a lower per-item rate will be raised to this floor. "
                          "0% = use per-category rates only. 2.5% = Dutch CPI baseline.") / 100
-                if IS_PAID:
-                    net_worth_start = w6.number_input("Starting net worth (€)",
-                        value=sv.get("net_worth_start", 0), step=5000, key=f"nws_{lbl}",
-                        help="Your total net worth at Jan 2026, including savings, investments, pension value, etc. Used to track actual net worth over time in the 📝 Actuals tab.")
-                else:
-                    net_worth_start = 0
-                    w6.markdown(
-                        "<div style='background:#1a1a2e;border:1px solid #f1c40f44;"
-                        "border-radius:6px;padding:8px;font-size:12px;color:#aaa'>"
-                        "🔒 <b style='color:#f1c40f'>Net worth tracker</b> — Pro only</div>",
-                        unsafe_allow_html=True)
+                net_worth_start = 0
 
             # ════════════════════════════════════════════════════════════════
             # 6 — FUTURE RECURRING EXPENSES  (paid)
@@ -2453,7 +2539,10 @@ The dashboard automatically applies the correct rate for each year based on your
                     st.info(f"📅 **From:** {hist_start}  →  **To:** {hist_end} *(locked to projection end)*", icon="🔒")
 
             params[lbl] = dict(
-                inc_s=inc_s, partner=partner, inc_p=inc_p,
+                inc_s=inc_s, inc_s_incl_vg=inc_s_incl_vg,
+                use_net_input=_use_net_input,
+                net_mo_input=sv.get('net_mo_input', 3500),
+                partner=partner, inc_p=inc_p,
                 n_kdv=n_kdv, n_bso=n_bso, kdv_hrs=kdv_hrs, bso_hrs=bso_hrs,
                 kdv_rate=kdv_rate, bso_rate=bso_rate,
                 sal_growth=sal_growth, sal_growth_p=sal_growth_p,
@@ -2475,9 +2564,17 @@ The dashboard automatically applies the correct rate for each year based on your
                 ab_mode=ab_mode,
                 global_inflation=global_inflation,
                 kot_start_ym=kot_start_ym, kot_end_ym=kot_end_ym,
-                net_worth_start=net_worth_start,
                 scenario_label=scenario_label,
             )
+
+    # ── Auto-extend projection to cover sell date ────────────────────────────
+    for _lbl_ext in list(params.keys()):
+        _p_ext = params[_lbl_ext]
+        if _p_ext.get("sell_house", False):
+            _sell_end_yr  = _p_ext.get("sy", 2031) + 1   # +1 so post-sale months are visible
+            _proj_end_yr  = 2026 + _p_ext.get("n_years", 5)
+            if _sell_end_yr > _proj_end_yr:
+                _p_ext["n_years"] = _sell_end_yr - 2026
 
     # ── If B not shown, copy A as placeholder ────────────────────────────────
     if "B" not in params:
@@ -2683,9 +2780,9 @@ with tabs[1]:
 📊 **Monthly net income and expense breakdown for Scenario A**, using your income, 30% ruling dates, and all expense inputs from Setup.
 
 - **Net income** is after Box 1 tax, ZVW, algemene heffingskorting, and arbeidskorting
-- The **30% ruling** shaded band shows the period where 70% of gross is taxed — the yellow bar chart shows the monthly benefit per year
-- **Zorgtoeslag** is subtracted as an income credit from your expenses
-- The **tax breakdown table** at the bottom shows exact numbers for both ruling-on and ruling-off scenarios
+- The **30% ruling** shaded band shows the period where 70% of gross is taxed
+- **Zorgtoeslag** is shown where applicable and subtracted as an income credit from expenses
+- See the **"How are these numbers calculated?"** expander at the bottom for full methodology and tax breakdown
         """)
     import datetime as _dt
     _today_ym = _dt.date.today().strftime("%Y-%m")
@@ -2740,17 +2837,12 @@ with tabs[1]:
         _table_rows.append(f"| **Partner net/mo** | {_yr_end_p-1} ruling on: €{_on_p:,.0f} | {_yr_end_p} ruling off: €{_off_p:,.0f} | **−€{_drop_p:,.0f}** |")
 
     if _banner_parts:
-        st.error(
+        st.warning(
             "⚠️ **30% Ruling expiry impact** — " + "  |  ".join(_banner_parts) +
-            f"  |  Combined household drop: **−€{_combined_drop:,.0f}/mo (−€{_combined_drop*12:,.0f}/yr)**. "
-            "Plan ahead: build savings during the ruling period to absorb this income drop.",
+            f"  |  Combined household drop: **−€{_combined_drop:,.0f}/mo (−€{_combined_drop*12:,.0f}/yr)**.",
             icon="📉"
         )
-        with st.expander("📐 How is this calculated?", expanded=False):
-            _tbl_md = "| Person | Last ruling year | First post-ruling year | Monthly change |\n|---|---|---|---|\n"
-            _tbl_md += "\n".join(_table_rows)
-            st.markdown(_tbl_md)
-            st.markdown("💡 During the ruling period, save the difference each month. Make sure your post-ruling net income still covers your mortgage payments.")
+        # Ruling breakdown moved to bottom "How are these numbers calculated?" expander
     else:
         st.info("ℹ️ Neither person has the 30% ruling enabled — no ruling expiry impact to show.", icon="💡")
     # For KPI calculations below, derive a combined ruling end year (earliest expiry among active rulings)
@@ -2784,16 +2876,14 @@ with tabs[1]:
     _km3.metric("🏦 Monthly Savings", f"€{cur_sav:,.0f}",
         delta=_sav_sign, delta_color="normal" if cur_sav >= 0 else "inverse",
         help=f"Net income minus total expenses in {cur_lbl}.")
-    _km4, _km5, _km6 = st.columns(3)
+    _km4, _km5 = st.columns(2)
     _km4.metric("🎯 30% Ruling Benefit", f"€{cur_ruling_ben:,.0f}",
         help="Extra net income this month because only 70% of gross is taxable. Drops to zero when ruling expires.")
-    _km5.metric("🏥 Zorgtoeslag", f"€{cur_zts:,.0f}",
-        help="Monthly Dutch government health insurance subsidy, income-tested.")
     if _has_kot:
-        _km6.metric("👶 Kinderopvangtoeslag", f"€{cur_kot:,.0f}",
+        _km5.metric("👶 Kinderopvangtoeslag", f"€{cur_kot:,.0f}",
             help="Monthly childcare benefit (dagopvang/BSO), income-tested.")
     else:
-        _km6.metric("📅 Period", cur_lbl, help="Current month shown in the KPIs above.")
+        _km5.metric("📅 Period", cur_lbl, help="Current month shown in the KPIs above.")
 
     st.divider()
 
@@ -2935,31 +3025,40 @@ with tabs[1]:
                        **chart_layout("30% Ruling: Net Monthly Income by Year", height=380))
     cr.plotly_chart(fig3, use_container_width=True, key="fig_income_tax_3")
 
-    with st.expander("🧮 Tax Breakdown — Ruling On vs Off", expanded=False):
-        pb2 = {"You": p["inc_s"]}
-        if p["partner"]: pb2["Partner"] = p["inc_p"]
-        tbl2 = []
-        _rf = {"You": p.get("ruling_s", True), "Partner": p.get("ruling_p", False)}
-        for name, base_gross in pb2.items():
-            _has_r = _rf.get(name, False)
-            _scens = [(2026, _has_r), (min(2029, 2026 + p.get("n_years", 5) - 1), False)] if _has_r else [(2026, False)]
-            for yr, a30 in _scens:
-                gross = base_gross * (1 + sg) ** (yr - 2026)
-                t   = income_tax(gross, yr, a30)
-                ah  = ahk(gross, yr); kk = ak(gross, yr); z = zvw(gross, a30)
-                net = net_annual_calc(gross, yr, a30)
-                _lbl_r = "ruling on" if a30 else "ruling off"
-                tbl2.append({"Person/Year": f"{name} {yr} ({_lbl_r})",
-                    "Gross": f"€{gross:,.0f}", "Income Tax": f"€{t:,.0f}",
-                    "AHK": f"€{ah:,.0f}", "Arbeidskorting": f"€{kk:,.0f}",
-                    "ZVW": f"€{z:,.0f}", "Net Annual": f"€{net:,.0f}",
-                    "Net Monthly": f"€{net/12:,.0f}",
-                    "Effective Rate": f"{(gross-net)/gross*100:.1f}%"})
-        st.dataframe(pd.DataFrame(tbl2), use_container_width=True, hide_index=True)
-
     # ── How are these numbers calculated? (bottom of tab) ─────────────────────
     st.divider()
     with st.expander("📖 How are these numbers calculated?", expanded=False):
+        # ── Tax breakdown table ───────────────────────────────────────────────
+        st.markdown("### 🧮 Tax Breakdown — Ruling On vs Off")
+        _pb2 = {"You": p["inc_s"]}
+        if p["partner"]: _pb2["Partner"] = p["inc_p"]
+        _tbl2 = []
+        _rf2 = {"You": p.get("ruling_s", True), "Partner": p.get("ruling_p", False)}
+        for _name2, _base_gross2 in _pb2.items():
+            _has_r2 = _rf2.get(_name2, False)
+            _scens2 = [(2026, _has_r2), (min(2029, 2026 + p.get("n_years", 5) - 1), False)] if _has_r2 else [(2026, False)]
+            for _yr2, _a30_2 in _scens2:
+                _gross2 = _base_gross2 * (1 + sg) ** (_yr2 - 2026)
+                _t2   = income_tax(_gross2, _yr2, _a30_2)
+                _ah2  = ahk(_gross2, _yr2); _kk2 = ak(_gross2, _yr2); _z2 = zvw(_gross2, _a30_2)
+                _net2 = net_annual_calc(_gross2, _yr2, _a30_2)
+                _lbl_r2 = "ruling on" if _a30_2 else "ruling off"
+                _tbl2.append({"Person / Year": f"{_name2} {_yr2} ({_lbl_r2})",
+                    "Gross": f"€{_gross2:,.0f}", "Income Tax": f"€{_t2:,.0f}",
+                    "AHK": f"€{_ah2:,.0f}", "Arbeidskorting": f"€{_kk2:,.0f}",
+                    "ZVW": f"€{_z2:,.0f}", "Net Annual": f"€{_net2:,.0f}",
+                    "Net Monthly": f"€{_net2/12:,.0f}",
+                    "Eff. Rate": f"{(_gross2-_net2)/_gross2*100:.1f}%"})
+        st.dataframe(pd.DataFrame(_tbl2), use_container_width=True, hide_index=True)
+
+        # ── 30% ruling expiry detail ───────────────────────────────────────────
+        if _table_rows:
+            st.markdown("### 📉 30% Ruling Expiry Impact")
+            _tbl_md2 = "| Person | Last ruling year | First post-ruling year | Monthly change |\n|---|---|---|---|\n"
+            _tbl_md2 += "\n".join(_table_rows)
+            st.markdown(_tbl_md2)
+            st.caption("💡 During the ruling period, save the difference each month to absorb the income drop on expiry.")
+
         st.markdown("""
 ### Dutch Income Tax Components (Box 1)
 
@@ -2969,11 +3068,11 @@ with tabs[1]:
 | **Algemene heffingskorting (AHK)** | General tax credit of up to **€3,362/yr** (2026), phasing out linearly between ~€24,800 and ~€75,500 gross. Reduces your final tax bill directly. |
 | **Arbeidskorting (AK)** | Labour tax credit of up to **€5,052/yr** (2026), phasing out between ~€38,100 and ~€124,900 gross. Rewards working over non-working income. |
 | **ZVW** | Income-dependent healthcare contribution of **5.65%** on gross (capped at ~€71,628). Paid on top of your health insurance premium. |
-| **30% ruling** | Eligible expats pay tax on only **70% of gross** (or 73% from 2027 starters). This affects Box 1, ZVW, and AHK/AK phase-outs. Duration is always 5 years. Rate drops from 30% to 27% from 2027 for 2024–2026 starters. |
-| **Hypotheekrenteaftrek (MRI)** | Mortgage interest is deductible from Box 1 taxable income at **36.97%**. The monthly tax saving equals monthly interest × 36.97%. Benefit decreases as the mortgage balance falls. |
-| **Zorgtoeslag** | Government health insurance subsidy, income-tested. Couples with combined gross above ~€45,000 receive little or none. Computed monthly and treated as an income credit. |
-| **Kinderopvangtoeslag** | Childcare benefit for *dagopvang* (0–4 yrs) and *BSO* (4–12 yrs). Income-tested, covering up to 96% of the government-capped hourly rate multiplied by your hours. |
-| **Box 3 wealth tax** | Annual tax on net assets above €57,000/person. Fictitious return rates: ~1.54% on savings, higher on investments. Taxed at **36%** of that fictitious return. |
+| **30% ruling** | Eligible expats pay tax on only **70% of gross** (or 73% from 2027 starters). Affects Box 1, ZVW, and AHK/AK phase-outs. Duration is 5 years. Rate drops from 30% to 27% from 2027 for 2024–2026 starters. |
+| **Hypotheekrenteaftrek (MRI)** | Mortgage interest deductible at **36.97%**. Monthly tax saving = monthly interest × 36.97%. Benefit shrinks as the balance falls. |
+| **Zorgtoeslag** | Health insurance subsidy, income-tested. Not applicable when combined gross exceeds ~€45,000 (couples) or ~€37,000 (singles). |
+| **Kinderopvangtoeslag** | Childcare benefit for dagopvang (0–4 yrs) and BSO (4–12 yrs). Income-tested, up to 96% of the capped hourly rate. |
+| **Box 3 wealth tax** | Annual tax on net assets above €57,000/person. Fictitious return taxed at **36%**. |
 
 ### How net monthly income is calculated
 
@@ -2986,11 +3085,11 @@ Gross annual salary
 = Net monthly income
 ```
 
-The **30% ruling** reduces taxable income before Box 1 and ZVW are applied, so the benefit compounds across all three components.
+The **30% ruling** reduces taxable income before Box 1 and ZVW are applied, so the benefit compounds across all three.
 
 ### Why do the KPI numbers change each year?
 
-Salary growth (if set in Setup), ruling expiry, and annual tax bracket indexation all cause the numbers to shift year-by-year. The KPIs always show the **current calendar month** within the projection.
+Salary growth, ruling expiry, and annual tax bracket indexation all shift the numbers year by year. KPIs always show the **current calendar month** within the projection.
         """)
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -3003,17 +3102,17 @@ with tabs[2]:
     # ── Crossover: find when buying overtakes renting ────────────────────────
     crossover_row = dw[dw["Wealth Delta"] > 0].head(1)
     if not crossover_row.empty:
-        cx_date   = crossover_row["Date"].iloc[0]
-        cx_months = int((cx_date - pd.Timestamp("2026-01-01")).days / 30.44)
-        cx_years  = cx_months / 12
-        buy_date_ts = pd.Timestamp(year=p["by"], month=p["bm"], day=1)
+        cx_date      = crossover_row["Date"].iloc[0]
+        buy_date_ts  = pd.Timestamp(year=p["by"], month=p["bm"], day=1)
         months_from_purchase = int((cx_date - buy_date_ts).days / 30.44)
         yrs_from_purchase    = months_from_purchase / 12
+        _ha = p.get('ha', 0.03)
+        _ha_label = "conservative ✅" if _ha <= 0.04 else "above historic average ⚠️"
         st.success(
-            f"🏆 **Buying overtakes renting after {cx_years:.1f} years** from Jan 2026 "
-            f"— that's **{yrs_from_purchase:.1f} years after purchase** "
+            f"🏆 **Buying overtakes renting {yrs_from_purchase:.1f} years after purchase** "
             f"(around **{cx_date.strftime('%B %Y')}**). "
-            f"After that point the buy scenario builds more wealth every month.",
+            f"Assuming an annual house appreciation of **{_ha*100:.1f}%** "
+            f"(Long-run Dutch average ~2–4%; recent years 5–8% — {_ha_label}).",
             icon="🏠"
         )
     else:
@@ -3037,7 +3136,7 @@ with tabs[2]:
     k3.metric("Buy vs Rent Edge", f"€{abs(delta):,.0f}",
               delta="Buying wins ✅" if delta > 0 else "Renting wins ✅",
               delta_color="normal" if delta > 0 else "inverse")
-    kpi(k4, "Home Equity (final)", fin["Home Equity"])
+    kpi(k4, "Home Equity before sell" if sell_summary else "Home Equity (final)", fin["Home Equity"])
     if sell_summary:
         k5.metric("Sale Net Proceeds", f"€{sell_summary['proceeds']:,.0f}",
                   help=f"Sale price minus mortgage payoff and selling costs on {sell_summary['date'].strftime('%b %Y')}")
@@ -3046,61 +3145,108 @@ with tabs[2]:
 
     # ── Sell event breakdown panel ────────────────────────────────────────────
     if sell_summary:
-        sell_years = (sell_summary["date"] - pd.Timestamp(year=p["by"], month=p["bm"], day=1)).days / 365.25
-        with st.expander(f"🏷️ House Sale Breakdown — {sell_summary['date'].strftime('%B %Y')} "
-                         f"({sell_years:.1f} years after purchase)", expanded=True):
-            sc1, sc2, sc3, sc4, sc5 = st.columns(5)
-            _buying_costs_wf = p["house_price"] * 0.02 + 3500   # 2% overdrachtsbelasting + ~€3,500 notaris
-            sc1.metric("Sale Price (market value)", f"€{sell_summary['hv']:,.0f}",
-                       help="Appreciated house value at time of sale based on the annual appreciation rate in Setup.")
-            sc2.metric("Mortgage Payoff", f"−€{sell_summary['mb']:,.0f}",
-                       help="Outstanding mortgage balance that must be repaid to the bank on the settlement date.")
-            sc3.metric("Selling Costs", f"−€{sell_summary['costs']:,.0f}",
-                       help="Estimated selling costs: ~1.5% estate agent (makelaar) fee plus €2,500 fixed costs (notaris, valuatie, etc.).")
-            sc4.metric("Buying Costs (at purchase)", f"−€{_buying_costs_wf:,.0f}",
-                       help=f"One-off costs paid when buying: 2% overdrachtsbelasting (€{p['house_price']*0.02:,.0f}) + ~€3,500 notaris/taxatie. Included here to show the true net return on the transaction.")
-            sc5.metric("Net Proceeds to You", f"€{sell_summary['proceeds'] - _buying_costs_wf:,.0f}",
-                       help="Sale price minus mortgage payoff, selling costs, and original buying costs. True net return on the full property transaction.")
+        _buy_dt_str  = pd.Timestamp(year=p["by"], month=p["bm"], day=1).strftime("%B %Y")
+        _sell_dt_str = sell_summary["date"].strftime("%B %Y")
+        sell_years   = (sell_summary["date"] - pd.Timestamp(year=p["by"], month=p["bm"], day=1)).days / 365.25
+        _loan_orig       = p["house_price"] * (1 - p["dp"])
+        _buying_costs_wf = p["house_price"] * 0.02 + 3500
+        _appreciation    = sell_summary["hv"] - p["house_price"]      # defined here for KPIs + waterfall
 
-            # Waterfall: Purchase Price → −Buying Costs → +Appreciation → −Mortgage → −Selling Costs → Net Proceeds
-            _purchase_price = p["house_price"]
-            _appreciation   = sell_summary["hv"] - _purchase_price
-            fig_sell = go.Figure(go.Waterfall(
-                orientation="v",
-                measure=["absolute", "relative", "relative", "relative", "relative", "total"],
-                x=["Purchase Price", "Buying Costs", "Appreciation", "Mortgage Payoff", "Selling Costs", "Net Proceeds"],
-                y=[_purchase_price, -_buying_costs_wf, _appreciation, -sell_summary["mb"], -sell_summary["costs"], 0],
-                text=[
-                    f"€{_purchase_price:,.0f}",
-                    f"−€{_buying_costs_wf:,.0f}",
-                    f"+€{_appreciation:,.0f}",
-                    f"−€{sell_summary['mb']:,.0f}",
-                    f"−€{sell_summary['costs']:,.0f}",
-                    f"€{sell_summary['proceeds'] - _buying_costs_wf:,.0f}",
-                ],
-                textposition="outside",
-                connector=dict(line=dict(color="rgba(255,255,255,0.3)")),
-                increasing=dict(marker_color="#2ecc71"),
-                decreasing=dict(marker_color="#e74c3c"),
-                totals=dict(marker_color="#3498db"),
-            ))
-            fig_sell.update_layout(**chart_layout(
-                f"House Sale Waterfall — {sell_summary['date'].strftime('%B %Y')}",
-                yaxis_title="€", height=420))
-            st.plotly_chart(fig_sell, use_container_width=True, key="fig_sell_waterfall")
+        st.divider()
+        st.markdown(
+            f"<div style='margin-bottom:6px'>"  
+            f"<span style='font-size:17px;font-weight:700'>🏷️ House Sale Breakdown</span>"  
+            f"<span style='color:#aaa;font-size:13px'> — Bought {_buy_dt_str} · Sold {_sell_dt_str} · "
+            f"Held {sell_years:.1f} years</span></div>",
+            unsafe_allow_html=True
+        )
+
+        sc1, sc2, sc3, sc4, sc5, sc6 = st.columns(6)
+        sc1.metric("Sale Price", f"€{sell_summary['hv']:,.0f}",
+                   help="Appreciated house value at time of sale.")
+        sc2.metric("Home Equity", f"€{sell_summary['hv'] - sell_summary['mb']:,.0f}",
+                   help="Sale price minus the remaining mortgage balance — the equity you realise on the day of sale.")
+        sc3.metric("Appreciation", f"€{_appreciation:,.0f}",
+                   help=f"Increase in house value from purchase price €{p['house_price']:,.0f} to sale price €{sell_summary['hv']:,.0f} at {p.get('ha',0.03)*100:.1f}%/yr.")
+        sc4.metric("Remaining Mortgage", f"−€{sell_summary['mb']:,.0f}",
+                   help="Outstanding mortgage balance repaid to the bank at settlement.")
+        sc5.metric("Selling Costs", f"−€{sell_summary['costs']:,.0f}",
+                   help="~1.5% estate agent fee plus €2,500 fixed costs.")
+        sc6.metric("Net Proceeds to You", f"€{sell_summary['proceeds'] - _buying_costs_wf:,.0f}",
+                   help="Sale price minus remaining mortgage, selling costs and original buying costs.")
+
+        # Waterfall: Purchase Price → −Buying Costs → +Appreciation → −Remaining Mortgage → −Selling Costs → Net Proceeds
+        _purchase_price  = p["house_price"]
+        _appreciation    = sell_summary["hv"] - _purchase_price
+        fig_sell = go.Figure(go.Waterfall(
+            orientation="v",
+            measure=["absolute", "relative", "relative", "relative", "relative", "total"],
+            x=["Purchase Price", "Buying Costs", "Appreciation",
+               "Remaining Mortgage", "Selling Costs", "Net Proceeds"],
+            y=[_purchase_price, -_buying_costs_wf,
+               _appreciation, -sell_summary["mb"], -sell_summary["costs"], 0],
+            text=[
+                f"€{_purchase_price:,.0f}",
+                f"−€{_buying_costs_wf:,.0f}",
+                f"+€{_appreciation:,.0f}",
+                f"−€{sell_summary['mb']:,.0f}",
+                f"−€{sell_summary['costs']:,.0f}",
+                f"€{sell_summary['proceeds'] - _buying_costs_wf:,.0f}",
+            ],
+            textposition="outside",
+            connector=dict(line=dict(color="rgba(255,255,255,0.3)")),
+            increasing=dict(marker_color="#2ecc71"),
+            decreasing=dict(marker_color="#e74c3c"),
+            totals=dict(marker_color="#3498db"),
+        ))
+        fig_sell.update_layout(**chart_layout(
+            f"House Sale Waterfall — Buy {_buy_dt_str} · Sell {_sell_dt_str}",
+            yaxis_title="€", height=440))
+        st.plotly_chart(fig_sell, use_container_width=True, key="fig_sell_waterfall")
 
     with st.expander("ℹ️ What does this tab show & how is wealth calculated?", expanded=False):
         _buying_costs_exp = pa["house_price"] * 0.02 + 3500
+        _end_buy  = dw["Total Wealth (Buy)"].iloc[-1]
+        _end_rent = dw["Total Wealth (Rent)"].iloc[-1]
+        _delta    = _end_buy - _end_rent
+        _cx_row   = dw[dw["Wealth Delta"] > 0].head(1)
+        _cx_str   = _cx_row["Date"].iloc[0].strftime("%B %Y") if not _cx_row.empty else "beyond the projection window"
+        _cx_yrs   = ((_cx_row["Date"].iloc[0] - dw["Date"].iloc[0]).days / 365.25) if not _cx_row.empty else None
+        _avg_sav  = df_m_a["Net Saving"].mean()
+        _ann_net1 = mort_payment(pa["house_price"], pa["dp"], pa["mort_rate"]) - \
+                    amortisation_schedule(pa["house_price"], pa["dp"], pa["mort_rate"])["MRI_Benefit"].iloc[0]
         st.markdown(f"""
-🏠 **Total wealth accumulation comparing buying vs renting**, using Scenario A inputs.
+### 🏠 What does this tab show?
 
-**Buy scenario:** On the purchase date, the down payment (€{pa['house_price']*pa['dp']:,.0f}) converts directly into home equity — so wealth is unchanged by the down payment itself. However, buying costs (2% overdrachtsbelasting = €{pa['house_price']*0.02:,.0f} + ~€3,500 notaris) are a pure loss, so **total wealth dips by ~€{_buying_costs_exp:,.0f} at purchase** — this is the visible drop on the chart at the 🏠 marker. After that, equity builds monthly as you repay principal and the house appreciates.
+This tab compares **total net worth** over time for two scenarios using your Scenario A inputs:
+- **Buying** the house you configured in Setup
+- **Renting** indefinitely and investing the difference
 
-**Rent scenario:** Full savings invested from day 1. You pay rent throughout. Monthly surplus also invested. No home equity.
+---
 
-Both scenarios are subject to **Box 3** wealth tax on savings above €57k/person per year.
+### 💰 Benefit of Buying vs Renting — Your Numbers
 
-If you've enabled a **sell date**, net proceeds (sale price minus mortgage payoff and ~1.5% + €2,500 selling costs) are added to cash. The mortgage is fully repaid at that point.
+| Metric | Value |
+|--------|-------|
+| **End wealth (Buy)** | €{_end_buy:,.0f} |
+| **End wealth (Rent)** | €{_end_rent:,.0f} |
+| **Buy advantage at end of projection** | {"**+€" + f"{_delta:,.0f}** ✅ Buying wins" if _delta > 0 else "**−€" + f"{abs(_delta):,.0f}** — Renting wins at this horizon"} |
+| **Buying overtakes renting** | {f"After **{_cx_yrs:.1f} years** ({_cx_str})" if _cx_yrs else "Not within projection window"} |
+| **Net mortgage payment / mo** | €{_ann_net1:,.0f} (after MRI tax benefit) |
+| **Your average monthly saving** | €{_avg_sav:,.0f} |
+| **One-off buying costs** | €{_buying_costs_exp:,.0f} (2% overdrachtsbelasting + €3,500 notaris) |
+
+---
+
+### 📐 How is wealth calculated?
+
+**Buy scenario:** On the purchase date, the down payment (€{pa['house_price']*pa['dp']:,.0f}) converts directly into home equity — wealth is unchanged by the down payment itself. Buying costs (~€{_buying_costs_exp:,.0f}) are a pure loss — this causes the visible dip at the 🏠 marker. After purchase, equity builds each month through principal repayment and house appreciation.
+
+**Rent scenario:** Full savings invested from day 1 at the investment return rate. Rent is paid throughout. Monthly surplus (income minus expenses) also invested. No home equity ever accrues.
+
+**Box 3 tax:** Both scenarios pay the fictitious return tax annually on net assets above €57,000/person — this reduces the compounding advantage of large cash positions.
+
+If a **sell date** is set, net proceeds (sale price minus mortgage payoff and ~1.5% + €2,500 selling costs) are added to the buy scenario cash on that date.
         """)
 
     st.divider()
@@ -3340,342 +3486,390 @@ The breakeven hold calculation asks: has house appreciation covered **all transa
 # ════════════════════════════════════════════════════════════════════════════════
 
 with tabs[3]:
-    st.subheader("🏦 Mortgage Analysis — Annuity vs Linear")
-    p = pa
-
-    loan_amount = p["house_price"] * (1 - p["dp"])
-    mort_yrs    = 30
-
-    df_ann = amortisation_schedule(p["house_price"], p["dp"], p["mort_rate"],
-                                   "Annuity (annuïteit)", mort_yrs)
-    df_lin = amortisation_schedule(p["house_price"], p["dp"], p["mort_rate"],
-                                   "Linear (lineair)", mort_yrs)
-
-    # ── Plain-language summary (Q2 + Q3) ─────────────────────────────────────
-    ann_mri_mo1 = df_ann["MRI_Benefit"].iloc[0]
-    lin_mri_mo1 = df_lin["MRI_Benefit"].iloc[0]
-    ann_net_mo1 = df_ann["Net_Payment"].iloc[0]
-    lin_net_mo1 = df_lin["Net_Payment"].iloc[0]
-    _chosen_is_linear = "Linear" in p.get("mort_type", "Annuity")
-    _chosen_gross = df_lin["Payment"].iloc[0] if _chosen_is_linear else df_ann["Payment"].iloc[0]
-    _chosen_mri   = lin_mri_mo1 if _chosen_is_linear else ann_mri_mo1
-    _chosen_net   = lin_net_mo1 if _chosen_is_linear else ann_net_mo1
-    _chosen_label = "Linear" if _chosen_is_linear else "Annuity"
-
-    st.info(
-        f"🏠 Based on your Setup inputs, your **{_chosen_label} mortgage** payment is "
-        f"**€{_chosen_gross:,.0f} gross/month** in month 1. "
-        f"The hypotheekrenteaftrek (mortgage interest tax deduction) gives you back "
-        f"**€{_chosen_mri:,.0f}/month** in tax savings, making your **effective net payment "
-        f"€{_chosen_net:,.0f}/month**. "
-        f"This tax benefit gradually decreases as your mortgage balance falls over time.",
-        icon="💰"
+    # ── Pro gate with gold lock header ───────────────────────────────────
+    st.markdown(
+        "<div style='display:flex;align-items:center;gap:10px;margin-bottom:4px'>"
+        "<span style='font-size:22px;font-weight:700'>🏦 Mortgage Analysis</span>"
+        + ("" if IS_PAID else
+        "<span style='background:linear-gradient(135deg,#d97706,#f59e0b);"
+        "color:#000;font-weight:700;font-size:11px;padding:3px 10px;"
+        "border-radius:20px;letter-spacing:0.3px'>🔒 PRO</span>")
+        + "</div>",
+        unsafe_allow_html=True
     )
-    with st.expander("📐 How is the tax benefit calculated?", expanded=False):
-        _int_mo1 = df_ann["Interest"].iloc[0] if not _chosen_is_linear else df_lin["Interest"].iloc[0]
-        st.markdown(f"""
-**Hypotheekrenteaftrek (MRI)** — mortgage interest deduction in Box 1:
-
-1. Each month you pay interest on the outstanding mortgage balance
-2. That interest amount is deductible from your taxable income at **36.97%** (2026 rate)
-3. The tax saving = monthly interest × 36.97%
-
-**Month 1 example ({_chosen_label}):**
-- Monthly interest paid: €{_int_mo1:,.0f}
-- Tax saving: €{_int_mo1:,.0f} × 36.97% = **€{_chosen_mri:,.0f}**
-- Gross mortgage payment: €{_chosen_gross:,.0f}
-- **Net effective payment: €{_chosen_gross:,.0f} − €{_chosen_mri:,.0f} = €{_chosen_net:,.0f}**
-
-The benefit is highest in early years when interest is large, and shrinks as you repay principal.
-For an annuity, the gross payment stays constant but the net payment rises over time as MRI falls.
-For a linear mortgage, both gross and net payments fall steadily.
-        """)
-
-    # ── KPI row ──────────────────────────────────────────────────────────────
-    # Month-1 tax benefits (already computed above)
-
-    k1, k2, k3, k4, k5, k6, k7, k8 = st.columns(8)
-    k1.metric("Loan Amount",               f"€{loan_amount:,.0f}")
-    k2.metric("Annuity — Gross/mo",        f"€{df_ann['Payment'].iloc[0]:,.0f}")
-    k3.metric("Annuity — MRI Benefit/mo",  f"€{ann_mri_mo1:,.0f}",
-              help="Monthly tax saving on interest in month 1 (36.97% of interest paid)")
-    k4.metric("Annuity — Net/mo",          f"€{ann_net_mo1:,.0f}",
-              help="Gross payment minus monthly MRI tax benefit")
-    k5.metric("Linear — Gross/mo (mo 1)",  f"€{df_lin['Payment'].iloc[0]:,.0f}")
-    k6.metric("Linear — MRI Benefit/mo",   f"€{lin_mri_mo1:,.0f}",
-              help="Monthly tax saving on interest in month 1 (36.97% of interest paid)")
-    k7.metric("Linear — Net/mo (mo 1)",    f"€{lin_net_mo1:,.0f}",
-              help="Gross payment minus monthly MRI tax benefit")
-    k8.metric("Linear — Net/mo (mo 360)",  f"€{df_lin['Net_Payment'].iloc[-1]:,.0f}",
-              help="Net payment in final month — interest is near zero so MRI benefit is minimal")
-
-    st.divider()
-
-
-
-    n_proj      = p.get("n_years", 5) * 12
-    df_ann_proj = df_ann.head(n_proj)
-    df_lin_proj = df_lin.head(n_proj)
-
-    # ── Chart 1: Monthly payment gross vs net ───────────────────────────────
-    fig_m1 = go.Figure()
-    fig_m1.add_trace(go.Scatter(x=df_ann_proj["Date"], y=df_ann_proj["Payment"],
-                                name="Annuity Gross", line=dict(color="#3498db", width=2)))
-    fig_m1.add_trace(go.Scatter(x=df_ann_proj["Date"], y=df_ann_proj["Net_Payment"],
-                                name="Annuity Net", line=dict(color="#2ecc71", width=2)))
-    fig_m1.add_trace(go.Scatter(x=df_lin_proj["Date"], y=df_lin_proj["Payment"],
-                                name="Linear Gross", line=dict(color="#e67e22", width=2, dash="dash")))
-    fig_m1.add_trace(go.Scatter(x=df_lin_proj["Date"], y=df_lin_proj["Net_Payment"],
-                                name="Linear Net", line=dict(color="#f1c40f", width=2, dash="dash")))
-    fig_m1.update_layout(**chart_layout(
-        "Monthly Mortgage Payment: Gross vs Net (after Hypotheekrenteaftrek)", height=420))
-    st.plotly_chart(fig_m1, use_container_width=True, key="fig_mort_1")
-
-    cl, cr = st.columns(2)
-
-    # ── Chart 2: Monthly MRI tax benefit ────────────────────────────────────
-    fig_m2 = go.Figure()
-    fig_m2.add_trace(go.Scatter(x=df_ann_proj["Date"], y=df_ann_proj["MRI_Benefit"],
-                                name="MRI (Annuity)",
-                                fill="tozeroy", fillcolor="rgba(52,152,219,0.15)",
-                                line=dict(color="#3498db", width=2)))
-    fig_m2.add_trace(go.Scatter(x=df_lin_proj["Date"], y=df_lin_proj["MRI_Benefit"],
-                                name="MRI (Linear)",
-                                fill="tozeroy", fillcolor="rgba(230,126,34,0.15)",
-                                line=dict(color="#e67e22", width=2, dash="dash")))
-    fig_m2.update_layout(**chart_layout(
-        "Monthly Tax Benefit (Hypotheekrenteaftrek @ 36.97%)", height=360))
-    cl.plotly_chart(fig_m2, use_container_width=True, key="fig_mort_2")
-
-    # ── Chart 3: Interest vs Principal (annuity) ────────────────────────────
-    fig_m3 = go.Figure()
-    fig_m3.add_trace(go.Bar(x=df_ann_proj["Date"], y=df_ann_proj["Interest"],
-                            name="Interest (Annuity)", marker_color="#e74c3c"))
-    fig_m3.add_trace(go.Bar(x=df_ann_proj["Date"], y=df_ann_proj["Principal"],
-                            name="Principal (Annuity)", marker_color="#3498db"))
-    fig_m3.update_layout(barmode="stack",
-                         **chart_layout("Annuity: Interest vs Principal Split", height=360))
-    cr.plotly_chart(fig_m3, use_container_width=True, key="fig_mort_3")
-
-    cl2, cr2 = st.columns(2)
-
-    # ── Chart 4: Mortgage balance full term ─────────────────────────────────
-    fig_m4 = go.Figure()
-    fig_m4.add_trace(go.Scatter(x=df_ann["Date"], y=df_ann["Balance"],
-                                name="Balance Annuity", line=dict(color="#3498db", width=2)))
-    fig_m4.add_trace(go.Scatter(x=df_lin["Date"], y=df_lin["Balance"],
-                                name="Balance Linear", line=dict(color="#e67e22", width=2, dash="dash")))
-    proj_end = df_ann_proj["Date"].iloc[-1].strftime("%Y-%m-%d")
-    fig_m4.add_shape(type="rect",
-                     x0=df_ann["Date"].iloc[0].strftime("%Y-%m-%d"), x1=proj_end,
-                     y0=0, y1=loan_amount, xref="x", yref="y",
-                     fillcolor="rgba(255,255,255,0.03)", line_width=0)
-    if not st.session_state.get("narrow_mode"):
-        fig_m4.add_annotation(x=proj_end, y=loan_amount * 0.95, xref="x", yref="y",
-                               text="← projection window", showarrow=False,
-                               xanchor="right", font=dict(color="#aaa", size=10))
-    fig_m4.update_layout(**chart_layout(
-        "Outstanding Mortgage Balance (30yr full term)", height=360))
-    cl2.plotly_chart(fig_m4, use_container_width=True, key="fig_mort_4")
-
-    # ── Chart 5: Cumulative MRI vs interest ─────────────────────────────────
-    fig_m5 = go.Figure()
-    fig_m5.add_trace(go.Scatter(x=df_ann["Date"], y=df_ann["MRI_Benefit"].cumsum(),
-                                name="Cumul. MRI Ann.", line=dict(color="#2ecc71", width=2)))
-    fig_m5.add_trace(go.Scatter(x=df_lin["Date"], y=df_lin["MRI_Benefit"].cumsum(),
-                                name="Cumul. MRI Lin.",
-                                line=dict(color="#f1c40f", width=2, dash="dash")))
-    fig_m5.add_trace(go.Scatter(x=df_ann["Date"], y=df_ann["Interest"].cumsum(),
-                                name="Cumul. Int. Ann.",
-                                line=dict(color="#e74c3c", width=1.5, dash="dot")))
-    fig_m5.add_trace(go.Scatter(x=df_lin["Date"], y=df_lin["Interest"].cumsum(),
-                                name="Cumul. Int. Lin.",
-                                line=dict(color="#e67e22", width=1.5, dash="dot")))
-    fig_m5.update_layout(**chart_layout(
-        "Cumulative Interest Paid vs MRI Tax Benefit (30yr)", height=360))
-    cr2.plotly_chart(fig_m5, use_container_width=True, key="fig_mort_5")
-
-    # ── Year-end summary table ────────────────────────────────────────────────
-    with st.expander("📊 Year-End Mortgage Summary (Annuity vs Linear)", expanded=False):
-        df_ann_yr = df_ann.groupby("Year").agg(
-            Ann_Pay=("Payment","sum"), Ann_Int=("Interest","sum"),
-            Ann_Prin=("Principal","sum"), Ann_MRI=("MRI_Benefit","sum"),
-            Ann_Bal=("Balance","last")).reset_index()
-        df_lin_yr = df_lin.groupby("Year").agg(
-            Lin_Pay=("Payment","sum"), Lin_Int=("Interest","sum"),
-            Lin_Prin=("Principal","sum"), Lin_MRI=("MRI_Benefit","sum"),
-            Lin_Bal=("Balance","last")).reset_index()
-        df_yr = df_ann_yr.merge(df_lin_yr, on="Year")
-        tbl_m = []
-        for _, r in df_yr.iterrows():
-            tbl_m.append({
-                "Year": int(r["Year"]),
-                "Ann. Payment/yr":     f"EUR {r['Ann_Pay']:,.0f}",
-                "Ann. Interest/yr":    f"EUR {r['Ann_Int']:,.0f}",
-                "Ann. MRI Benefit/yr": f"EUR {r['Ann_MRI']:,.0f}",
-                "Ann. Balance (EOY)":  f"EUR {r['Ann_Bal']:,.0f}",
-                "Lin. Payment/yr":     f"EUR {r['Lin_Pay']:,.0f}",
-                "Lin. Interest/yr":    f"EUR {r['Lin_Int']:,.0f}",
-                "Lin. MRI Benefit/yr": f"EUR {r['Lin_MRI']:,.0f}",
-                "Lin. Balance (EOY)":  f"EUR {r['Lin_Bal']:,.0f}",
-            })
-        st.dataframe(pd.DataFrame(tbl_m), use_container_width=True, hide_index=True)
-
-    # ── 30-year total cost comparison ────────────────────────────────────────
-    st.divider()
-    with st.expander("💡 30-Year Total Cost Comparison", expanded=False):
-        ann_net = df_ann["Payment"].sum() - df_ann["MRI_Benefit"].sum()
-        lin_net = df_lin["Payment"].sum() - df_lin["MRI_Benefit"].sum()
-        saving  = ann_net - lin_net
-        tc1, tc2, tc3 = st.columns(3)
-        tc1.metric("Annuity - Net Total Cost", f"EUR {ann_net:,.0f}",
-                   help="Total payments minus 30yr MRI tax benefit")
-        tc2.metric("Linear - Net Total Cost",  f"EUR {lin_net:,.0f}",
-                   help="Total payments minus 30yr MRI tax benefit")
-        tc3.metric("Saving with Linear", f"EUR {saving:,.0f}",
-                   delta="Linear cheaper" if saving > 0 else "Annuity cheaper",
-                   delta_color="normal" if saving > 0 else "inverse")
-
-    # ── House Price Sensitivity ────────────────────────────────────────────────────────────────────────────
-    st.divider()
-    st.subheader("🏷️ Monthly Payment vs House Price")
-    st.caption(
-        "See how your gross monthly repayment and MRI tax benefit change across a range of house prices, "
-        "using your current down payment % and mortgage rate from Setup."
-    )
-
-    _sens_col1, _sens_col2, _sens_col3 = st.columns(3)
-    _price_min = int(_sens_col1.number_input(
-        "Price range — from (€)", value=int(max(100_000, p["house_price"] - 300_000)),
-        step=25_000, key="sens_min",
-        help="Lowest house price to show on the chart."))
-    _price_max = int(_sens_col2.number_input(
-        "Price range — to (€)", value=int(p["house_price"] + 300_000),
-        step=25_000, key="sens_max",
-        help="Highest house price to show on the chart."))
-    _price_step = int(_sens_col3.selectbox(
-        "Step size (€)", [10_000, 25_000, 50_000, 100_000], index=1, key="sens_step",
-        help="Interval between price points on the x-axis."))
-
-    if _price_min >= _price_max:
-        st.warning("Price range 'from' must be less than 'to'.")
+    if not IS_PAID:
+        # ── Greyed example charts ─────────────────────────────────────────
+        st.caption("Upgrade to Pro to unlock full mortgage analysis — annuity vs linear, MRI tax benefit, balance chart and 30-year cost comparison.")
+        _mort_demo_ann = amortisation_schedule(400000, 0.10, 0.040, "Annuity (annuïteit)", 30)
+        _mort_demo_lin = amortisation_schedule(400000, 0.10, 0.040, "Linear (lineair)", 30)
+        _mort_demo_proj = _mort_demo_ann.head(60)
+        _mort_demo_lin_proj = _mort_demo_lin.head(60)
+        st.markdown(
+            "<div style='opacity:0.25;pointer-events:none;filter:blur(2px);"
+            "border-radius:8px;overflow:hidden;margin-bottom:4px'>",
+            unsafe_allow_html=True
+        )
+        _fig_demo1 = go.Figure()
+        _fig_demo1.add_trace(go.Scatter(x=_mort_demo_proj["Date"], y=_mort_demo_proj["Payment"],
+            name="Annuity Gross", line=dict(color="#3498db", width=2)))
+        _fig_demo1.add_trace(go.Scatter(x=_mort_demo_proj["Date"], y=_mort_demo_proj["Net_Payment"],
+            name="Annuity Net", line=dict(color="#2ecc71", width=2)))
+        _fig_demo1.add_trace(go.Scatter(x=_mort_demo_lin_proj["Date"], y=_mort_demo_lin_proj["Payment"],
+            name="Linear Gross", line=dict(color="#e67e22", width=2, dash="dash")))
+        _fig_demo1.update_layout(**chart_layout("Monthly Mortgage Payment: Gross vs Net", height=320))
+        st.plotly_chart(_fig_demo1, use_container_width=True, key="fig_mort_demo1")
+        _dmc1, _dmc2 = st.columns(2)
+        _fig_demo2 = go.Figure()
+        _fig_demo2.add_trace(go.Scatter(x=_mort_demo_proj["Date"], y=_mort_demo_proj["MRI_Benefit"],
+            name="MRI Benefit", fill="tozeroy", fillcolor="rgba(52,152,219,0.15)",
+            line=dict(color="#3498db", width=2)))
+        _fig_demo2.update_layout(**chart_layout("Monthly Tax Benefit (MRI)", height=280))
+        _dmc1.plotly_chart(_fig_demo2, use_container_width=True, key="fig_mort_demo2")
+        _fig_demo3 = go.Figure()
+        _fig_demo3.add_trace(go.Scatter(x=_mort_demo_ann["Date"], y=_mort_demo_ann["Balance"],
+            name="Balance Annuity", line=dict(color="#3498db", width=2)))
+        _fig_demo3.add_trace(go.Scatter(x=_mort_demo_lin["Date"], y=_mort_demo_lin["Balance"],
+            name="Balance Linear", line=dict(color="#e67e22", width=2, dash="dash")))
+        _fig_demo3.update_layout(**chart_layout("Outstanding Mortgage Balance (30yr)", height=280))
+        _dmc2.plotly_chart(_fig_demo3, use_container_width=True, key="fig_mort_demo3")
+        st.markdown("</div>", unsafe_allow_html=True)
+        _paid_gate("Full Mortgage Analysis", icon="🏦")
     else:
-        _prices = list(range(_price_min, _price_max + _price_step, _price_step))
-        _dp     = p["dp"]
-        _rate   = p["mort_rate"]
-        _is_lin = "Linear" in p.get("mort_type", "Annuity")
+        p = pa
 
-        _gross_pay, _mri_ben, _net_pay = [], [], []
-        for _hp in _prices:
-            _loan = _hp * (1 - _dp)
-            _int_mo1 = _loan * (_rate / 12)
-            if _is_lin:
-                _g = (_loan / (30 * 12)) + _int_mo1
-            else:
-                _g = mort_payment(_hp, _dp, _rate)
-            _m = _int_mo1 * MRI_RATE
-            _gross_pay.append(round(_g))
-            _mri_ben.append(round(_m))
-            _net_pay.append(round(_g - _m))
+        loan_amount = p["house_price"] * (1 - p["dp"])
+        mort_yrs    = 30
 
-        _price_labels = [f"€{p_//1000:.0f}k" for p_ in _prices]
-        _cur_idx = min(range(len(_prices)), key=lambda i: abs(_prices[i] - p["house_price"]))
+        df_ann = amortisation_schedule(p["house_price"], p["dp"], p["mort_rate"],
+                                       "Annuity (annuïteit)", mort_yrs)
+        df_lin = amortisation_schedule(p["house_price"], p["dp"], p["mort_rate"],
+                                       "Linear (lineair)", mort_yrs)
 
-        _fig_sens = go.Figure()
-        # MRI benefit as bottom stack (yellow)
-        _fig_sens.add_trace(go.Bar(
-            x=_price_labels, y=_mri_ben,
-            name="MRI Tax Benefit",
-            marker_color="rgba(241,196,15,0.80)",
-            hovertemplate="€%{y:,.0f}/mo<extra>MRI benefit</extra>",
-        ))
-        # Net payment stacked on top (blue)
-        _fig_sens.add_trace(go.Bar(
-            x=_price_labels, y=[g - m for g, m in zip(_gross_pay, _mri_ben)],
-            name="Net Payment (after MRI)",
-            marker_color="rgba(52,152,219,0.80)",
-            hovertemplate="€%{y:,.0f}/mo<extra>Net payment</extra>",
-        ))
-        # Gross repayment line (red)
-        _fig_sens.add_trace(go.Scatter(
-            x=_price_labels, y=_gross_pay,
-            name="Gross Monthly Payment",
-            mode="lines+markers",
-            line=dict(color="#e74c3c", width=2.5),
-            marker=dict(size=5),
-            hovertemplate="€%{y:,.0f}/mo<extra>Gross payment</extra>",
-        ))
-        # Vertical marker for current house price
-        _fig_sens.add_shape(type="line",
-            x0=_price_labels[_cur_idx], x1=_price_labels[_cur_idx],
-            y0=0, y1=1, xref="x", yref="paper",
-            line=dict(color="#2ecc71", width=2, dash="dash"))
+        # ── Plain-language summary (Q2 + Q3) ─────────────────────────────────────
+        ann_mri_mo1 = df_ann["MRI_Benefit"].iloc[0]
+        lin_mri_mo1 = df_lin["MRI_Benefit"].iloc[0]
+        ann_net_mo1 = df_ann["Net_Payment"].iloc[0]
+        lin_net_mo1 = df_lin["Net_Payment"].iloc[0]
+        _chosen_is_linear = "Linear" in p.get("mort_type", "Annuity")
+        _chosen_gross = df_lin["Payment"].iloc[0] if _chosen_is_linear else df_ann["Payment"].iloc[0]
+        _chosen_mri   = lin_mri_mo1 if _chosen_is_linear else ann_mri_mo1
+        _chosen_net   = lin_net_mo1 if _chosen_is_linear else ann_net_mo1
+        _chosen_label = "Linear" if _chosen_is_linear else "Annuity"
+
+        st.info(
+            f"🏠 Based on your Setup inputs, your **{_chosen_label} mortgage** payment is "
+            f"**€{_chosen_gross:,.0f} gross/month** in month 1. "
+            f"The hypotheekrenteaftrek (mortgage interest tax deduction) gives you back "
+            f"**€{_chosen_mri:,.0f}/month** in tax savings, making your **effective net payment "
+            f"€{_chosen_net:,.0f}/month**. "
+            f"This tax benefit gradually decreases as your mortgage balance falls over time.",
+            icon="💰"
+        )
+        with st.expander("📐 How is the tax benefit calculated?", expanded=False):
+            _int_mo1 = df_ann["Interest"].iloc[0] if not _chosen_is_linear else df_lin["Interest"].iloc[0]
+            st.markdown(f"""
+    **Hypotheekrenteaftrek (MRI)** — mortgage interest deduction in Box 1:
+
+    1. Each month you pay interest on the outstanding mortgage balance
+    2. That interest amount is deductible from your taxable income at **36.97%** (2026 rate)
+    3. The tax saving = monthly interest × 36.97%
+
+    **Month 1 example ({_chosen_label}):**
+    - Monthly interest paid: €{_int_mo1:,.0f}
+    - Tax saving: €{_int_mo1:,.0f} × 36.97% = **€{_chosen_mri:,.0f}**
+    - Gross mortgage payment: €{_chosen_gross:,.0f}
+    - **Net effective payment: €{_chosen_gross:,.0f} − €{_chosen_mri:,.0f} = €{_chosen_net:,.0f}**
+
+    The benefit is highest in early years when interest is large, and shrinks as you repay principal.
+    For an annuity, the gross payment stays constant but the net payment rises over time as MRI falls.
+    For a linear mortgage, both gross and net payments fall steadily.
+            """)
+
+        # ── KPI row ──────────────────────────────────────────────────────────────
+        # Month-1 tax benefits (already computed above)
+
+        k1, k2, k3, k4, k5, k6, k7, k8 = st.columns(8)
+        k1.metric("Loan Amount",               f"€{loan_amount:,.0f}")
+        k2.metric("Annuity — Gross/mo",        f"€{df_ann['Payment'].iloc[0]:,.0f}")
+        k3.metric("Annuity — MRI Benefit/mo",  f"€{ann_mri_mo1:,.0f}",
+                  help="Monthly tax saving on interest in month 1 (36.97% of interest paid)")
+        k4.metric("Annuity — Net/mo",          f"€{ann_net_mo1:,.0f}",
+                  help="Gross payment minus monthly MRI tax benefit")
+        k5.metric("Linear — Gross/mo (mo 1)",  f"€{df_lin['Payment'].iloc[0]:,.0f}")
+        k6.metric("Linear — MRI Benefit/mo",   f"€{lin_mri_mo1:,.0f}",
+                  help="Monthly tax saving on interest in month 1 (36.97% of interest paid)")
+        k7.metric("Linear — Net/mo (mo 1)",    f"€{lin_net_mo1:,.0f}",
+                  help="Gross payment minus monthly MRI tax benefit")
+        k8.metric("Linear — Net/mo (mo 360)",  f"€{df_lin['Net_Payment'].iloc[-1]:,.0f}",
+                  help="Net payment in final month — interest is near zero so MRI benefit is minimal")
+
+        st.divider()
+
+
+
+        n_proj      = p.get("n_years", 5) * 12
+        df_ann_proj = df_ann.head(n_proj)
+        df_lin_proj = df_lin.head(n_proj)
+
+        # ── Chart 1: Monthly payment gross vs net ───────────────────────────────
+        fig_m1 = go.Figure()
+        fig_m1.add_trace(go.Scatter(x=df_ann_proj["Date"], y=df_ann_proj["Payment"],
+                                    name="Annuity Gross", line=dict(color="#3498db", width=2)))
+        fig_m1.add_trace(go.Scatter(x=df_ann_proj["Date"], y=df_ann_proj["Net_Payment"],
+                                    name="Annuity Net", line=dict(color="#2ecc71", width=2)))
+        fig_m1.add_trace(go.Scatter(x=df_lin_proj["Date"], y=df_lin_proj["Payment"],
+                                    name="Linear Gross", line=dict(color="#e67e22", width=2, dash="dash")))
+        fig_m1.add_trace(go.Scatter(x=df_lin_proj["Date"], y=df_lin_proj["Net_Payment"],
+                                    name="Linear Net", line=dict(color="#f1c40f", width=2, dash="dash")))
+        fig_m1.update_layout(**chart_layout(
+            "Monthly Mortgage Payment: Gross vs Net (after Hypotheekrenteaftrek)", height=420))
+        st.plotly_chart(fig_m1, use_container_width=True, key="fig_mort_1")
+
+        cl, cr = st.columns(2)
+
+        # ── Chart 2: Monthly MRI tax benefit ────────────────────────────────────
+        fig_m2 = go.Figure()
+        fig_m2.add_trace(go.Scatter(x=df_ann_proj["Date"], y=df_ann_proj["MRI_Benefit"],
+                                    name="MRI (Annuity)",
+                                    fill="tozeroy", fillcolor="rgba(52,152,219,0.15)",
+                                    line=dict(color="#3498db", width=2)))
+        fig_m2.add_trace(go.Scatter(x=df_lin_proj["Date"], y=df_lin_proj["MRI_Benefit"],
+                                    name="MRI (Linear)",
+                                    fill="tozeroy", fillcolor="rgba(230,126,34,0.15)",
+                                    line=dict(color="#e67e22", width=2, dash="dash")))
+        fig_m2.update_layout(**chart_layout(
+            "Monthly Tax Benefit (Hypotheekrenteaftrek @ 36.97%)", height=360))
+        cl.plotly_chart(fig_m2, use_container_width=True, key="fig_mort_2")
+
+        # ── Chart 3: Interest vs Principal (annuity) ────────────────────────────
+        fig_m3 = go.Figure()
+        fig_m3.add_trace(go.Bar(x=df_ann_proj["Date"], y=df_ann_proj["Interest"],
+                                name="Interest (Annuity)", marker_color="#e74c3c"))
+        fig_m3.add_trace(go.Bar(x=df_ann_proj["Date"], y=df_ann_proj["Principal"],
+                                name="Principal (Annuity)", marker_color="#3498db"))
+        fig_m3.update_layout(barmode="stack",
+                             **chart_layout("Annuity: Interest vs Principal Split", height=360))
+        cr.plotly_chart(fig_m3, use_container_width=True, key="fig_mort_3")
+
+        cl2, cr2 = st.columns(2)
+
+        # ── Chart 4: Mortgage balance full term ─────────────────────────────────
+        fig_m4 = go.Figure()
+        fig_m4.add_trace(go.Scatter(x=df_ann["Date"], y=df_ann["Balance"],
+                                    name="Balance Annuity", line=dict(color="#3498db", width=2)))
+        fig_m4.add_trace(go.Scatter(x=df_lin["Date"], y=df_lin["Balance"],
+                                    name="Balance Linear", line=dict(color="#e67e22", width=2, dash="dash")))
+        proj_end = df_ann_proj["Date"].iloc[-1].strftime("%Y-%m-%d")
+        fig_m4.add_shape(type="rect",
+                         x0=df_ann["Date"].iloc[0].strftime("%Y-%m-%d"), x1=proj_end,
+                         y0=0, y1=loan_amount, xref="x", yref="y",
+                         fillcolor="rgba(255,255,255,0.03)", line_width=0)
         if not st.session_state.get("narrow_mode"):
-            _fig_sens.add_annotation(
-                x=_price_labels[_cur_idx], y=0.96, xref="x", yref="paper",
-                text=f"Your price<br>€{p['house_price']//1000:.0f}k",
-                showarrow=False, xanchor="left", font=dict(color="#2ecc71", size=10))
+            fig_m4.add_annotation(x=proj_end, y=loan_amount * 0.95, xref="x", yref="y",
+                                   text="← projection window", showarrow=False,
+                                   xanchor="right", font=dict(color="#aaa", size=10))
+        fig_m4.update_layout(**chart_layout(
+            "Outstanding Mortgage Balance (30yr full term)", height=360))
+        cl2.plotly_chart(fig_m4, use_container_width=True, key="fig_mort_4")
 
-        _fig_sens.update_layout(
-            barmode="stack",
-            **chart_layout(
-                f"Monthly Repayment vs House Price — {_chosen_label}, "
-                f"{_dp*100:.0f}% down, {_rate*100:.1f}% rate",
-                yaxis_title="€/month", height=440))
-        st.plotly_chart(_fig_sens, use_container_width=True, key="fig_mort_sens")
+        # ── Chart 5: Cumulative MRI vs interest ─────────────────────────────────
+        fig_m5 = go.Figure()
+        fig_m5.add_trace(go.Scatter(x=df_ann["Date"], y=df_ann["MRI_Benefit"].cumsum(),
+                                    name="Cumul. MRI Ann.", line=dict(color="#2ecc71", width=2)))
+        fig_m5.add_trace(go.Scatter(x=df_lin["Date"], y=df_lin["MRI_Benefit"].cumsum(),
+                                    name="Cumul. MRI Lin.",
+                                    line=dict(color="#f1c40f", width=2, dash="dash")))
+        fig_m5.add_trace(go.Scatter(x=df_ann["Date"], y=df_ann["Interest"].cumsum(),
+                                    name="Cumul. Int. Ann.",
+                                    line=dict(color="#e74c3c", width=1.5, dash="dot")))
+        fig_m5.add_trace(go.Scatter(x=df_lin["Date"], y=df_lin["Interest"].cumsum(),
+                                    name="Cumul. Int. Lin.",
+                                    line=dict(color="#e67e22", width=1.5, dash="dot")))
+        fig_m5.update_layout(**chart_layout(
+            "Cumulative Interest Paid vs MRI Tax Benefit (30yr)", height=360))
+        cr2.plotly_chart(fig_m5, use_container_width=True, key="fig_mort_5")
 
-        # Key callout metrics for the currently selected house price
-        _mc1, _mc2, _mc3, _mc4 = st.columns(4)
-        _mc1.metric("Gross payment",   f"€{_gross_pay[_cur_idx]:,.0f}/mo")
-        _mc2.metric("MRI tax benefit", f"€{_mri_ben[_cur_idx]:,.0f}/mo",
-            help="Hypotheekrenteaftrek — mortgage interest deductible at 36.97%")
-        _mc3.metric("Net payment",     f"€{_net_pay[_cur_idx]:,.0f}/mo")
-        _mc4.metric("Loan amount",     f"€{int(_prices[_cur_idx]*(1-_dp)):,.0f}",
-            help=f"{(1-_dp)*100:.0f}% of purchase price after {_dp*100:.0f}% down payment")
+        # ── Year-end summary table ────────────────────────────────────────────────
+        with st.expander("📊 Year-End Mortgage Summary (Annuity vs Linear)", expanded=False):
+            df_ann_yr = df_ann.groupby("Year").agg(
+                Ann_Pay=("Payment","sum"), Ann_Int=("Interest","sum"),
+                Ann_Prin=("Principal","sum"), Ann_MRI=("MRI_Benefit","sum"),
+                Ann_Bal=("Balance","last")).reset_index()
+            df_lin_yr = df_lin.groupby("Year").agg(
+                Lin_Pay=("Payment","sum"), Lin_Int=("Interest","sum"),
+                Lin_Prin=("Principal","sum"), Lin_MRI=("MRI_Benefit","sum"),
+                Lin_Bal=("Balance","last")).reset_index()
+            df_yr = df_ann_yr.merge(df_lin_yr, on="Year")
+            tbl_m = []
+            for _, r in df_yr.iterrows():
+                tbl_m.append({
+                    "Year": int(r["Year"]),
+                    "Ann. Payment/yr":     f"EUR {r['Ann_Pay']:,.0f}",
+                    "Ann. Interest/yr":    f"EUR {r['Ann_Int']:,.0f}",
+                    "Ann. MRI Benefit/yr": f"EUR {r['Ann_MRI']:,.0f}",
+                    "Ann. Balance (EOY)":  f"EUR {r['Ann_Bal']:,.0f}",
+                    "Lin. Payment/yr":     f"EUR {r['Lin_Pay']:,.0f}",
+                    "Lin. Interest/yr":    f"EUR {r['Lin_Int']:,.0f}",
+                    "Lin. MRI Benefit/yr": f"EUR {r['Lin_MRI']:,.0f}",
+                    "Lin. Balance (EOY)":  f"EUR {r['Lin_Bal']:,.0f}",
+                })
+            st.dataframe(pd.DataFrame(tbl_m), use_container_width=True, hide_index=True)
 
-    # ── How are these numbers calculated? (bottom of tab) ─────────────────────
-    st.divider()
-    with st.expander("📖 How are these numbers calculated?", expanded=False):
-        st.markdown(f"""
-### Annuity vs Linear Mortgage
+        # ── 30-year total cost comparison ────────────────────────────────────────
+        st.divider()
+        with st.expander("💡 30-Year Total Cost Comparison", expanded=False):
+            ann_net = df_ann["Payment"].sum() - df_ann["MRI_Benefit"].sum()
+            lin_net = df_lin["Payment"].sum() - df_lin["MRI_Benefit"].sum()
+            saving  = ann_net - lin_net
+            tc1, tc2, tc3 = st.columns(3)
+            tc1.metric("Annuity - Net Total Cost", f"EUR {ann_net:,.0f}",
+                       help="Total payments minus 30yr MRI tax benefit")
+            tc2.metric("Linear - Net Total Cost",  f"EUR {lin_net:,.0f}",
+                       help="Total payments minus 30yr MRI tax benefit")
+            tc3.metric("Saving with Linear", f"EUR {saving:,.0f}",
+                       delta="Linear cheaper" if saving > 0 else "Annuity cheaper",
+                       delta_color="normal" if saving > 0 else "inverse")
 
-Both mortgage types amortise the same loan over 30 years at the same interest rate, but they differ in how payments are structured.
+        # ── House Price Sensitivity ────────────────────────────────────────────────────────────────────────────
+        st.divider()
+        st.subheader("🏷️ Monthly Payment vs House Price")
+        st.caption(
+            "See how your gross monthly repayment and MRI tax benefit change across a range of house prices, "
+            "using your current down payment % and mortgage rate from Setup."
+        )
 
-#### Annuity (*annuïteit*)
-- **Gross payment is constant** every month for 30 years
-- Early payments are mostly interest; late payments are mostly principal
-- The formula: `P = L × [r(1+r)ⁿ] / [(1+r)ⁿ − 1]`  
-  where L = loan, r = monthly rate, n = 360 months
-- **Net payment rises over time** because the MRI tax benefit shrinks as your balance falls and you pay less interest each month
+        _sens_col1, _sens_col2, _sens_col3 = st.columns(3)
+        _price_min = int(_sens_col1.number_input(
+            "Price range — from (€)", value=int(max(100_000, p["house_price"] - 300_000)),
+            step=25_000, key="sens_min",
+            help="Lowest house price to show on the chart."))
+        _price_max = int(_sens_col2.number_input(
+            "Price range — to (€)", value=int(p["house_price"] + 300_000),
+            step=25_000, key="sens_max",
+            help="Highest house price to show on the chart."))
+        _price_step = int(_sens_col3.selectbox(
+            "Step size (€)", [10_000, 25_000, 50_000, 100_000], index=1, key="sens_step",
+            help="Interval between price points on the x-axis."))
 
-#### Linear (*lineair*)
-- **Principal repayment is constant** every month (loan ÷ 360)
-- Gross payment starts high and falls steadily
-- **Net payment also falls steadily** — you pay less interest and less MRI benefit each month
-- Total interest paid over 30 years is lower than annuity
+        if _price_min >= _price_max:
+            st.warning("Price range 'from' must be less than 'to'.")
+        else:
+            _prices = list(range(_price_min, _price_max + _price_step, _price_step))
+            _dp     = p["dp"]
+            _rate   = p["mort_rate"]
+            _is_lin = "Linear" in p.get("mort_type", "Annuity")
 
-#### Hypotheekrenteaftrek (MRI)
-The Dutch government lets you deduct mortgage interest from your Box 1 taxable income:
+            _gross_pay, _mri_ben, _net_pay = [], [], []
+            for _hp in _prices:
+                _loan = _hp * (1 - _dp)
+                _int_mo1 = _loan * (_rate / 12)
+                if _is_lin:
+                    _g = (_loan / (30 * 12)) + _int_mo1
+                else:
+                    _g = mort_payment(_hp, _dp, _rate)
+                _m = _int_mo1 * MRI_RATE
+                _gross_pay.append(round(_g))
+                _mri_ben.append(round(_m))
+                _net_pay.append(round(_g - _m))
 
-```
-Monthly MRI benefit = Monthly interest paid × 36.97%
-```
+            _price_labels = [f"€{p_//1000:.0f}k" for p_ in _prices]
+            _cur_idx = min(range(len(_prices)), key=lambda i: abs(_prices[i] - p["house_price"]))
 
-The 36.97% rate is the bottom Box 1 rate (2026). This is automatically applied as a monthly cash saving on your effective payment. The benefit:
-- Is **highest in year 1** when your balance and interest are largest
-- **Falls every year** as you repay principal
-- Is **equal for both mortgage types in month 1** (same opening balance), but diverges as the balance falls at different speeds
+            _fig_sens = go.Figure()
+            # MRI benefit as bottom stack (yellow)
+            _fig_sens.add_trace(go.Bar(
+                x=_price_labels, y=_mri_ben,
+                name="MRI Tax Benefit",
+                marker_color="rgba(241,196,15,0.80)",
+                hovertemplate="€%{y:,.0f}/mo<extra>MRI benefit</extra>",
+            ))
+            # Net payment stacked on top (blue)
+            _fig_sens.add_trace(go.Bar(
+                x=_price_labels, y=[g - m for g, m in zip(_gross_pay, _mri_ben)],
+                name="Net Payment (after MRI)",
+                marker_color="rgba(52,152,219,0.80)",
+                hovertemplate="€%{y:,.0f}/mo<extra>Net payment</extra>",
+            ))
+            # Gross repayment line (red)
+            _fig_sens.add_trace(go.Scatter(
+                x=_price_labels, y=_gross_pay,
+                name="Gross Monthly Payment",
+                mode="lines+markers",
+                line=dict(color="#e74c3c", width=2.5),
+                marker=dict(size=5),
+                hovertemplate="€%{y:,.0f}/mo<extra>Gross payment</extra>",
+            ))
+            # Vertical marker for current house price
+            _fig_sens.add_shape(type="line",
+                x0=_price_labels[_cur_idx], x1=_price_labels[_cur_idx],
+                y0=0, y1=1, xref="x", yref="paper",
+                line=dict(color="#2ecc71", width=2, dash="dash"))
+            if not st.session_state.get("narrow_mode"):
+                _fig_sens.add_annotation(
+                    x=_price_labels[_cur_idx], y=0.96, xref="x", yref="paper",
+                    text=f"Your price<br>€{p['house_price']//1000:.0f}k",
+                    showarrow=False, xanchor="left", font=dict(color="#2ecc71", size=10))
 
-#### 30-year cost comparison
-Linear mortgages are always cheaper in total interest paid, but the higher initial payments require a stronger cashflow in the early years. Annuity mortgages suit buyers who need predictable fixed monthly costs.
+            _fig_sens.update_layout(
+                barmode="stack",
+                **chart_layout(
+                    f"Monthly Repayment vs House Price — {_chosen_label}, "
+                    f"{_dp*100:.0f}% down, {_rate*100:.1f}% rate",
+                    yaxis_title="€/month", height=440))
+            st.plotly_chart(_fig_sens, use_container_width=True, key="fig_mort_sens")
 
-| | Annuity | Linear |
-|---|---|---|
-| Monthly payment | Fixed | Falling |
-| Total interest (30yr) | Higher | Lower |
-| MRI benefit (30yr) | Higher total | Lower total |
-| Early cashflow stress | Lower | Higher |
-        """)
+            # Key callout metrics for the currently selected house price
+            _mc1, _mc2, _mc3, _mc4 = st.columns(4)
+            _mc1.metric("Gross payment",   f"€{_gross_pay[_cur_idx]:,.0f}/mo")
+            _mc2.metric("MRI tax benefit", f"€{_mri_ben[_cur_idx]:,.0f}/mo",
+                help="Hypotheekrenteaftrek — mortgage interest deductible at 36.97%")
+            _mc3.metric("Net payment",     f"€{_net_pay[_cur_idx]:,.0f}/mo")
+            _mc4.metric("Loan amount",     f"€{int(_prices[_cur_idx]*(1-_dp)):,.0f}",
+                help=f"{(1-_dp)*100:.0f}% of purchase price after {_dp*100:.0f}% down payment")
+
+        # ── How are these numbers calculated? (bottom of tab) ─────────────────────
+        st.divider()
+        with st.expander("📖 How are these numbers calculated?", expanded=False):
+            st.markdown(f"""
+    ### Annuity vs Linear Mortgage
+
+    Both mortgage types amortise the same loan over 30 years at the same interest rate, but they differ in how payments are structured.
+
+    #### Annuity (*annuïteit*)
+    - **Gross payment is constant** every month for 30 years
+    - Early payments are mostly interest; late payments are mostly principal
+    - The formula: `P = L × [r(1+r)ⁿ] / [(1+r)ⁿ − 1]`  
+      where L = loan, r = monthly rate, n = 360 months
+    - **Net payment rises over time** because the MRI tax benefit shrinks as your balance falls and you pay less interest each month
+
+    #### Linear (*lineair*)
+    - **Principal repayment is constant** every month (loan ÷ 360)
+    - Gross payment starts high and falls steadily
+    - **Net payment also falls steadily** — you pay less interest and less MRI benefit each month
+    - Total interest paid over 30 years is lower than annuity
+
+    #### Hypotheekrenteaftrek (MRI)
+    The Dutch government lets you deduct mortgage interest from your Box 1 taxable income:
+
+    ```
+    Monthly MRI benefit = Monthly interest paid × 36.97%
+    ```
+
+    The 36.97% rate is the bottom Box 1 rate (2026). This is automatically applied as a monthly cash saving on your effective payment. The benefit:
+    - Is **highest in year 1** when your balance and interest are largest
+    - **Falls every year** as you repay principal
+    - Is **equal for both mortgage types in month 1** (same opening balance), but diverges as the balance falls at different speeds
+
+    #### 30-year cost comparison
+    Linear mortgages are always cheaper in total interest paid, but the higher initial payments require a stronger cashflow in the early years. Annuity mortgages suit buyers who need predictable fixed monthly costs.
+
+    | | Annuity | Linear |
+    |---|---|---|
+    | Monthly payment | Fixed | Falling |
+    | Total interest (30yr) | Higher | Lower |
+    | MRI benefit (30yr) | Higher total | Lower total |
+    | Early cashflow stress | Lower | Higher |
+            """)
 
 # TAB 4 — SCENARIO A/B  (paid)
 # ════════════════════════════════════════════════════════════════════════════════
@@ -3758,8 +3952,7 @@ with tabs[4]:
                 ("Other",                lambda p: f"€{p.get('ot',300)}/mo"),
                 ("Children dagopvang",   lambda p: str(p.get("n_kdv", 0))),
                 ("Children BSO",         lambda p: str(p.get("n_bso", 0))),
-                ("Net worth start",      lambda p: f"€{p.get('net_worth_start',0):,.0f}"),
-            ]
+                    ]
             _diff_rows = []
             for _fname, _fget in _diff_fields:
                 try:
@@ -4461,81 +4654,9 @@ with tabs[5]:
                     f"Cumulative Savings — €{abs(diff):,.0f} {sign_lbl} forecast", height=320))
                 st.plotly_chart(fig_a4, use_container_width=True, key="fig_act_4")
 
-            # ── Net worth tracker ────────────────────────────────────────────────
-            _nws = p_act.get("net_worth_start", 0)
-            if not a_f.empty:
-                a_f["net_worth"] = _nws + a_f["cumul_actual"]
-                a_f["net_worth_fc"] = _nws + a_f["cumul_forecast"]
-                _nw_latest = a_f["net_worth"].iloc[-1]
-                _nw_fc_latest = a_f["net_worth_fc"].iloc[-1]
-                _nw_delta = _nw_latest - _nw_fc_latest
-                fig_nw = go.Figure()
-                fig_nw.add_trace(go.Scatter(
-                    x=a_f["month_dt"], y=a_f["net_worth"],
-                    name="Actual",
-                    line=dict(color="#f1c40f", width=2.5),
-                    fill="tozeroy", fillcolor="rgba(241,196,15,0.07)"))
-                fig_nw.add_trace(go.Scatter(
-                    x=a_f["month_dt"], y=a_f["net_worth_fc"],
-                    name="Forecast",
-                    line=dict(color="#95a5a6", width=1.5, dash="dash")))
-                fig_nw.update_layout(**chart_layout(
-                    f"Net Worth — €{_nw_latest:,.0f} actual · "
-                    f"{'ahead of' if _nw_delta >= 0 else 'behind'} forecast by €{abs(_nw_delta):,.0f}",
-                    "€", height=300))
-                st.plotly_chart(fig_nw, use_container_width=True, key="fig_act_nw")
-                _nw_col1, _nw_col2, _nw_col3 = st.columns(3)
-                _nw_col1.metric("Starting Net Worth", f"€{_nws:,.0f}",
-                    help="Set in ⚙️ Setup → 📈 Projection Assumptions.")
-                _nw_col2.metric("Current Net Worth (actual)", f"€{_nw_latest:,.0f}",
-                    delta=f"€{_nw_delta:+,.0f} vs forecast")
-                _nw_col3.metric("Net Worth Forecast", f"€{_nw_fc_latest:,.0f}")
 
-            # ── Net Worth Tracker ────────────────────────────────────────────────
-            _nws = p_act.get("net_worth_start", 0)
-            if _nws > 0 and not a_f.empty:
-                st.divider()
-                st.subheader("💎 Net Worth Tracker")
-                st.caption(
-                    f"Starting net worth **€{_nws:,.0f}** (from Setup → Projection Assumptions) "
-                    "plus cumulative savings to date. Liquid wealth only — "
-                    "home equity from the Buy vs Rent tab adds on top."
-                )
-                a_nw = a_f.copy()
-                a_nw["nw_actual"]   = _nws + a_nw["cumul_actual"]
-                a_nw["nw_forecast"] = _nws + a_nw["cumul_forecast"]
-                _cur_nw   = a_nw["nw_actual"].iloc[-1]
-                _fc_nw    = a_nw["nw_forecast"].iloc[-1]
-                _nw_delta = _cur_nw - _fc_nw
-                _nw_cols  = st.columns(3)
-                _nw_cols[0].metric("Current Net Worth (liquid)", f"€{_cur_nw:,.0f}",
-                    delta=f"€{_nw_delta:+,.0f} vs forecast",
-                    help="Starting net worth + cumulative actual savings entered in this tab.")
-                _nw_cols[1].metric("Forecast Net Worth (to date)", f"€{_fc_nw:,.0f}",
-                    help="Starting net worth + cumulative forecast savings for the same period.")
-                _nw_cols[2].metric("Months Tracked", len(a_nw),
-                    help="Number of months with actual savings data entered.")
-                fig_nw = go.Figure()
-                fig_nw.add_trace(go.Scatter(
-                    x=a_nw["month_dt"], y=a_nw["nw_actual"],
-                    name="Actual", mode="lines+markers",
-                    line=dict(color="#2ecc71", width=2.5), marker=dict(size=6)
-                ))
-                fig_nw.add_trace(go.Scatter(
-                    x=a_nw["month_dt"], y=a_nw["nw_forecast"],
-                    name="Forecast", mode="lines",
-                    line=dict(color="#3498db", width=2, dash="dash")
-                ))
-                fig_nw.add_hline(y=_nws, line_color="#7f8c8d", line_dash="dot",
-                    annotation_text="" if st.session_state.get("narrow_mode") else f"Start €{_nws:,.0f}", annotation_position="bottom right")
-                fig_nw.update_layout(**chart_layout(
-                    f"Net Worth Over Time — starting €{_nws:,.0f}", "€", height=340))
-                st.plotly_chart(fig_nw, use_container_width=True, key="fig_act_nw")
-            elif _nws == 0 and not a_f.empty:
-                st.info(
-                    "💡 Set a **Starting net worth** in ⚙️ Setup → Projection Assumptions "
-                    "to enable the net worth tracker here.", icon="💎"
-                )
+
+
 
             # ── KPI summary ───────────────────────────────────────────────────────
             kpi_cols = st.columns(5 if not has_partner else 6)
@@ -4597,7 +4718,6 @@ with tabs[5]:
     - **Savings chart** — actual monthly savings vs forecast target.
     - **Expense breakdown** — shows how income splits across fixed costs, variable spending, and savings.
     - **Cumulative savings** — running total of actual savings vs cumulative forecast. Drift above or below the line shows whether you're ahead or behind your target.
-    - **Net Worth tracker** — starting net worth (from Setup) plus cumulative savings. Requires a starting net worth value in Setup → Projection Assumptions.
             """)
 
 with tabs[6]:
@@ -4688,350 +4808,399 @@ with tabs[6]:
 # ════════════════════════════════════════════════════════════════════════════════
 
 with tabs[7]:
-    st.subheader("🏖️ Retirement Planning")
-    st.caption(
-        "Dutch retirement projection — AOW · occupational pension · private capital · "
-        "FIRE number · portfolio depletion · sensitivity analysis"
+    # ── Pro gate with gold lock header ───────────────────────────────────
+    st.markdown(
+        "<div style='display:flex;align-items:center;gap:10px;margin-bottom:4px'>"
+        "<span style='font-size:22px;font-weight:700'>🏖️ Retirement Planning</span>"
+        + ("" if IS_PAID else
+        "<span style='background:linear-gradient(135deg,#d97706,#f59e0b);"
+        "color:#000;font-weight:700;font-size:11px;padding:3px 10px;"
+        "border-radius:20px;letter-spacing:0.3px'>🔒 PRO</span>")
+        + "</div>",
+        unsafe_allow_html=True
     )
+    if not IS_PAID:
+        # ── Greyed example charts ─────────────────────────────────────────
+        st.caption("Upgrade to Pro to unlock full retirement planning — pension gap, FIRE number, portfolio growth, depletion analysis and sensitivity table.")
+        import numpy as _np_ret_demo
+        _ret_demo_yrs  = list(range(2026, 2059))
+        _ret_demo_port = [50000 * (1.07 ** y) + 800 * y * 12 for y in range(len(_ret_demo_yrs))]
+        _ret_demo_dep  = [max(600000 * (1.04 ** y) - 1200 * y * 12, 0) for y in range(34)]
+        _ret_demo_ages = list(range(67, 67 + len(_ret_demo_dep)))
+        st.markdown(
+            "<div style='opacity:0.25;pointer-events:none;filter:blur(2px);"
+            "border-radius:8px;overflow:hidden;margin-bottom:4px'>",
+            unsafe_allow_html=True
+        )
+        _fig_ret_d1 = go.Figure()
+        _fig_ret_d1.add_trace(go.Scatter(x=_ret_demo_yrs, y=_ret_demo_port,
+            name="Portfolio", line=dict(color="#1d4ed8", width=2.5),
+            fill="tozeroy", fillcolor="rgba(29,78,216,0.08)"))
+        _fig_ret_d1.add_hline(y=750000, line_dash="dash", line_color="#b91c1c",
+            annotation_text="Capital Needed", annotation_position="bottom right")
+        _fig_ret_d1.update_layout(**chart_layout("Portfolio Growth to Retirement", "€", height=300,
+            xaxis_title="Year"))
+        st.plotly_chart(_fig_ret_d1, use_container_width=True, key="fig_ret_demo1")
+        _rdc1, _rdc2 = st.columns(2)
+        _fig_ret_d2 = go.Figure(go.Bar(
+            x=["AOW", "Pension", "Capital (SWR)", "Target"],
+            y=[1450, 500, 875, 3500],
+            marker_color=["#0f766e", "#1d4ed8", "#15803d", "#b91c1c"]))
+        _fig_ret_d2.update_layout(**chart_layout("Retirement Income Sources", "€/mo", height=280))
+        _rdc1.plotly_chart(_fig_ret_d2, use_container_width=True, key="fig_ret_demo2")
+        _fig_ret_d3 = go.Figure()
+        _fig_ret_d3.add_trace(go.Scatter(x=_ret_demo_ages, y=_ret_demo_dep,
+            name="Remaining Capital", line=dict(color="#15803d", width=2.5),
+            fill="tozeroy", fillcolor="rgba(21,128,61,0.08)"))
+        _fig_ret_d3.update_layout(**chart_layout("Portfolio Depletion in Retirement", "€", height=280,
+            xaxis_title="Age"))
+        _rdc2.plotly_chart(_fig_ret_d3, use_container_width=True, key="fig_ret_demo3")
+        st.markdown("</div>", unsafe_allow_html=True)
+        _paid_gate("Retirement Planning & FIRE Analysis", icon="🏖️")
+    else:
+        st.caption(
+            "Dutch retirement projection — AOW · occupational pension · private capital · "
+            "FIRE number · portfolio depletion · sensitivity analysis"
+        )
 
-    with st.expander("ℹ️ How does this tab work?", expanded=False):
-        st.markdown("""
-This tab models your **path to retirement** and whether your projected capital is sufficient.
+        with st.expander("ℹ️ How does this tab work?", expanded=False):
+            st.markdown("""
+    This tab models your **path to retirement** and whether your projected capital is sufficient.
 
-**Three income pillars (Dutch system):**
-- **AOW** — state pension paid from age 67 (amount depends on years of residency; full AOW ≈ €1,450/mo single, €1,000/mo each for couples).
-- **Occupational pension (2e pijler)** — accrued via your employer. Enter your expected monthly amount.
-- **Private capital (3e pijler / Box 3)** — your own savings and investments drawn down in retirement.
+    **Three income pillars (Dutch system):**
+    - **AOW** — state pension paid from age 67 (amount depends on years of residency; full AOW ≈ €1,450/mo single, €1,000/mo each for couples).
+    - **Occupational pension (2e pijler)** — accrued via your employer. Enter your expected monthly amount.
+    - **Private capital (3e pijler / Box 3)** — your own savings and investments drawn down in retirement.
 
-**Key metrics calculated:**
-- **Pension gap** — the difference between your target retirement income and AOW + pension.
-- **Capital needed at retirement** — gap capitalised using the Safe Withdrawal Rate (SWR).
-- **FIRE number** — total portfolio needed to retire, using your SWR. Based on the 4% rule / Trinity Study.
-- **Savings runway** — years until your projected portfolio reaches the FIRE number.
-- **Portfolio depletion** — how long capital lasts if drawn at the gap amount from retirement.
+    **Key metrics calculated:**
+    - **Pension gap** — the difference between your target retirement income and AOW + pension.
+    - **Capital needed at retirement** — gap capitalised using the Safe Withdrawal Rate (SWR).
+    - **FIRE number** — total portfolio needed to retire, using your SWR. Based on the 4% rule / Trinity Study.
+    - **Savings runway** — years until your projected portfolio reaches the FIRE number.
+    - **Portfolio depletion** — how long capital lasts if drawn at the gap amount from retirement.
 
-**Assumptions:** Returns are nominal. Inflation adjustment reduces real purchasing power over time.
-        """)
+    **Assumptions:** Returns are nominal. Inflation adjustment reduces real purchasing power over time.
+            """)
 
-    p = pa   # use Scenario A parameters
-    sv_ret = saved_A   # for reading saved retirement inputs
+        p = pa   # use Scenario A parameters
+        sv_ret = saved_A   # for reading saved retirement inputs
 
-    st.divider()
-    st.markdown("#### ⚙️ Retirement Inputs")
-    rc1, rc2, rc3 = st.columns(3)
+        st.divider()
+        st.markdown("#### ⚙️ Retirement Inputs")
+        rc1, rc2, rc3 = st.columns(3)
 
-    ret_current_age = rc1.number_input(
-        "Your current age", value=int(sv_ret.get("ret_current_age", 32)),
-        min_value=18, max_value=80, step=1, key="ret_age_now",
-        help="Used to calculate years to retirement and savings accumulation period.")
-    ret_age = rc2.number_input(
-        "Target retirement age", value=int(sv_ret.get("ret_age", 67)),
-        min_value=40, max_value=80, step=1, key="ret_age",
-        help="Dutch AOW age is currently 67. You can target early retirement (FIRE) by setting a lower age.")
-    ret_target_income = rc3.number_input(
-        "Target retirement income (€/mo net)", value=int(sv_ret.get("ret_target_income", 3500)),
-        min_value=500, max_value=20000, step=100, key="ret_target",
-        help="The monthly after-tax income you want in retirement. A common rule of thumb is 70–80% of your final net salary.")
+        ret_current_age = rc1.number_input(
+            "Your current age", value=int(sv_ret.get("ret_current_age", 32)),
+            min_value=18, max_value=80, step=1, key="ret_age_now",
+            help="Used to calculate years to retirement and savings accumulation period.")
+        ret_age = rc2.number_input(
+            "Target retirement age", value=int(sv_ret.get("ret_age", 67)),
+            min_value=40, max_value=80, step=1, key="ret_age",
+            help="Dutch AOW age is currently 67. You can target early retirement (FIRE) by setting a lower age.")
+        ret_target_income = rc3.number_input(
+            "Target retirement income (€/mo net)", value=int(sv_ret.get("ret_target_income", 3500)),
+            min_value=500, max_value=20000, step=100, key="ret_target",
+            help="The monthly after-tax income you want in retirement. A common rule of thumb is 70–80% of your final net salary.")
 
-    rc4, rc5, rc6 = st.columns(3)
-    ret_aow = rc4.number_input(
-        "Expected AOW (€/mo)", value=int(sv_ret.get("ret_aow", 1450)),
-        min_value=0, max_value=3000, step=50, key="ret_aow",
-        help="Full AOW (2026): ~€1,450/mo for singles, ~€1,000/mo each for couples. Reduced if you have fewer than 50 years of Dutch residency (2% per missing year).")
-    ret_pension = rc5.number_input(
-        "Expected occupational pension (€/mo)", value=int(sv_ret.get("ret_pension", 500)),
-        min_value=0, max_value=10000, step=50, key="ret_pension",
-        help="Monthly pension from your employer's scheme (2e pijler). Check your UPO (Uniform Pensioenoverzicht) from Mijnpensioenoverzicht.nl for your accrued and projected amount.")
-    ret_swr = rc6.slider(
-        "Safe Withdrawal Rate (%/yr)", 2.0, 6.0,
-        float(sv_ret.get("ret_swr", 0.035)) * 100, 0.1,
-        key="ret_swr",
-        help="The % of your portfolio you withdraw annually in retirement. The classic '4% rule' (Trinity Study) works for 30yr horizons; use 3–3.5% for longer retirements or more safety.") / 100
+        rc4, rc5, rc6 = st.columns(3)
+        ret_aow = rc4.number_input(
+            "Expected AOW (€/mo)", value=int(sv_ret.get("ret_aow", 1450)),
+            min_value=0, max_value=3000, step=50, key="ret_aow",
+            help="Full AOW (2026): ~€1,450/mo for singles, ~€1,000/mo each for couples. Reduced if you have fewer than 50 years of Dutch residency (2% per missing year).")
+        ret_pension = rc5.number_input(
+            "Expected occupational pension (€/mo)", value=int(sv_ret.get("ret_pension", 500)),
+            min_value=0, max_value=10000, step=50, key="ret_pension",
+            help="Monthly pension from your employer's scheme (2e pijler). Check your UPO (Uniform Pensioenoverzicht) from Mijnpensioenoverzicht.nl for your accrued and projected amount.")
+        ret_swr = rc6.slider(
+            "Safe Withdrawal Rate (%/yr)", 2.0, 6.0,
+            float(sv_ret.get("ret_swr", 0.035)) * 100, 0.1,
+            key="ret_swr",
+            help="The % of your portfolio you withdraw annually in retirement. The classic '4% rule' (Trinity Study) works for 30yr horizons; use 3–3.5% for longer retirements or more safety.") / 100
 
-    rc7, rc8, rc9 = st.columns(3)
-    ret_return_pre = rc7.slider(
-        "Pre-retirement return (%/yr)", 2.0, 12.0,
-        float(sv_ret.get("ret_return_pre", 0.07)) * 100, 0.25,
-        key="ret_ret_pre",
-        help="Expected annual nominal return on investments before retirement. Global equity index funds have historically returned ~7–9% nominal.") / 100
-    ret_return_post = rc8.slider(
-        "Post-retirement return (%/yr)", 1.0, 8.0,
-        float(sv_ret.get("ret_return_post", 0.04)) * 100, 0.25,
-        key="ret_ret_post",
-        help="Lower than pre-retirement as the portfolio shifts to more conservative assets (bonds, annuities) to reduce sequence-of-returns risk.") / 100
-    ret_inflation = rc9.slider(
-        "Inflation (%/yr)", 0.0, 6.0,
-        float(sv_ret.get("ret_inflation", 0.025)) * 100, 0.25,
-        key="ret_inflation",
-        help="Used to show real (inflation-adjusted) values. ECB target is 2%. Dutch CPI averaged ~2.5% 2000–2024.") / 100
+        rc7, rc8, rc9 = st.columns(3)
+        ret_return_pre = rc7.slider(
+            "Pre-retirement return (%/yr)", 2.0, 12.0,
+            float(sv_ret.get("ret_return_pre", 0.07)) * 100, 0.25,
+            key="ret_ret_pre",
+            help="Expected annual nominal return on investments before retirement. Global equity index funds have historically returned ~7–9% nominal.") / 100
+        ret_return_post = rc8.slider(
+            "Post-retirement return (%/yr)", 1.0, 8.0,
+            float(sv_ret.get("ret_return_post", 0.04)) * 100, 0.25,
+            key="ret_ret_post",
+            help="Lower than pre-retirement as the portfolio shifts to more conservative assets (bonds, annuities) to reduce sequence-of-returns risk.") / 100
+        ret_inflation = rc9.slider(
+            "Inflation (%/yr)", 0.0, 6.0,
+            float(sv_ret.get("ret_inflation", 0.025)) * 100, 0.25,
+            key="ret_inflation",
+            help="Used to show real (inflation-adjusted) values. ECB target is 2%. Dutch CPI averaged ~2.5% 2000–2024.") / 100
 
-    # ── Core calculations ─────────────────────────────────────────────────────
-    import datetime as _dt_ret
-    years_to_ret  = max(ret_age - ret_current_age, 1)
-    years_in_ret  = 100 - ret_age   # to age 100 (conservative)
+        # ── Core calculations ─────────────────────────────────────────────────────
+        import datetime as _dt_ret
+        years_to_ret  = max(ret_age - ret_current_age, 1)
+        years_in_ret  = 100 - ret_age   # to age 100 (conservative)
 
-    # Pension gap = target - (AOW + occupational pension)
-    pillar1_2     = ret_aow + ret_pension
-    pension_gap   = max(ret_target_income - pillar1_2, 0)
+        # Pension gap = target - (AOW + occupational pension)
+        pillar1_2     = ret_aow + ret_pension
+        pension_gap   = max(ret_target_income - pillar1_2, 0)
 
-    # Capital needed at retirement to fund the gap (SWR method)
-    capital_needed = pension_gap * 12 / ret_swr if ret_swr > 0 else 0
+        # Capital needed at retirement to fund the gap (SWR method)
+        capital_needed = pension_gap * 12 / ret_swr if ret_swr > 0 else 0
 
-    # FIRE number = total capital that can fund full target income (no AOW/pension subtracted)
-    fire_number   = ret_target_income * 12 / ret_swr if ret_swr > 0 else 0
+        # FIRE number = total capital that can fund full target income (no AOW/pension subtracted)
+        fire_number   = ret_target_income * 12 / ret_swr if ret_swr > 0 else 0
 
-    # Starting capital = current wealth from Buy vs Rent projection
-    # Use end-of-projection wealth (Buy scenario total)
-    starting_capital = df_w_a.iloc[-1]["Total Wealth (Buy)"]
+        # Starting capital = current wealth from Buy vs Rent projection
+        # Use end-of-projection wealth (Buy scenario total)
+        starting_capital = df_w_a.iloc[-1]["Total Wealth (Buy)"]
 
-    # Monthly savings (average over projection)
-    avg_monthly_saving = df_m_a["Net Saving"].mean()
+        # Monthly savings (average over projection)
+        avg_monthly_saving = df_m_a["Net Saving"].mean()
 
-    # Project portfolio growth year-by-year (pre-retirement)
-    _r_mo = (1 + ret_return_pre) ** (1/12) - 1
-    portfolio = []
-    cap = starting_capital
-    _n_proj_years = pa.get("n_years", 5)
-    _years_remaining_to_ret = years_to_ret - _n_proj_years
-    # Phase 1: during projection window (we have monthly data)
-    for _, row in df_m_a.iterrows():
-        cap = cap * (1 + _r_mo) + row["Net Saving"]
-    # Phase 2: after projection window to retirement (use avg saving, apply growth)
-    for yr in range(max(_years_remaining_to_ret, 0)):
-        for mo in range(12):
-            cap = cap * (1 + _r_mo) + avg_monthly_saving
-    projected_capital_at_ret = max(cap, 0)
+        # Project portfolio growth year-by-year (pre-retirement)
+        _r_mo = (1 + ret_return_pre) ** (1/12) - 1
+        portfolio = []
+        cap = starting_capital
+        _n_proj_years = pa.get("n_years", 5)
+        _years_remaining_to_ret = years_to_ret - _n_proj_years
+        # Phase 1: during projection window (we have monthly data)
+        for _, row in df_m_a.iterrows():
+            cap = cap * (1 + _r_mo) + row["Net Saving"]
+        # Phase 2: after projection window to retirement (use avg saving, apply growth)
+        for yr in range(max(_years_remaining_to_ret, 0)):
+            for mo in range(12):
+                cap = cap * (1 + _r_mo) + avg_monthly_saving
+        projected_capital_at_ret = max(cap, 0)
 
-    # Savings runway: years until projected portfolio hits capital_needed
-    # Brute-force forward simulation from current end-of-projection capital
-    _cap_run = starting_capital
-    runway_years = None
-    for yr in range(1, 61):
-        for mo in range(12):
-            _cap_run = _cap_run * (1 + _r_mo) + avg_monthly_saving
-        if _cap_run >= capital_needed:
-            runway_years = yr
-            break
-
-    # Portfolio depletion from projected_capital_at_ret
-    _cap_dep = projected_capital_at_ret
-    _r_mo_post = (1 + ret_return_post) ** (1/12) - 1
-    _gap_mo = pension_gap
-    depletion_years = None
-    for yr in range(1, 71):
-        for mo in range(12):
-            _cap_dep = _cap_dep * (1 + _r_mo_post) - _gap_mo
-            if _cap_dep <= 0:
-                depletion_years = yr
+        # Savings runway: years until projected portfolio hits capital_needed
+        # Brute-force forward simulation from current end-of-projection capital
+        _cap_run = starting_capital
+        runway_years = None
+        for yr in range(1, 61):
+            for mo in range(12):
+                _cap_run = _cap_run * (1 + _r_mo) + avg_monthly_saving
+            if _cap_run >= capital_needed:
+                runway_years = yr
                 break
-        if depletion_years:
-            break
 
-    # Net replacement ratio
-    _cur_net = net_monthly_calc(p["inc_s"], 2026,
-        p.get("ruling_s", False) and p.get("rs_s", 2026) <= 2026 < p.get("re_s", 2031))
-    _cur_net += net_monthly_calc(p["inc_p"], 2026, False) if p.get("partner") else 0
-    replacement_ratio = ret_target_income / max(_cur_net, 1) * 100
+        # Portfolio depletion from projected_capital_at_ret
+        _cap_dep = projected_capital_at_ret
+        _r_mo_post = (1 + ret_return_post) ** (1/12) - 1
+        _gap_mo = pension_gap
+        depletion_years = None
+        for yr in range(1, 71):
+            for mo in range(12):
+                _cap_dep = _cap_dep * (1 + _r_mo_post) - _gap_mo
+                if _cap_dep <= 0:
+                    depletion_years = yr
+                    break
+            if depletion_years:
+                break
 
-    # ── KPI strip ────────────────────────────────────────────────────────────
-    st.divider()
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Pension Gap / mo",
-              f"€{pension_gap:,.0f}",
-              help="Monthly shortfall: target income minus AOW and occupational pension.")
-    k2.metric("Capital Needed at Retirement",
-              f"€{capital_needed:,.0f}",
-              help=f"Gap × 12 ÷ SWR ({ret_swr*100:.1f}%). Lump sum needed on retirement day to fund the shortfall indefinitely.")
-    k3.metric("FIRE Number",
-              f"€{fire_number:,.0f}",
-              help="Total portfolio for full independence (no AOW/pension assumed). Same SWR applied to full target income.")
-    k4.metric("Projected Capital at Retirement",
-              f"€{projected_capital_at_ret:,.0f}",
-              delta=f"{'✅ Surplus' if projected_capital_at_ret >= capital_needed else '⚠️ Shortfall'} €{abs(projected_capital_at_ret - capital_needed):,.0f}",
-              delta_color="normal" if projected_capital_at_ret >= capital_needed else "inverse",
-              help="Forward projection of your wealth at retirement age, growing at the pre-retirement return rate.")
+        # Net replacement ratio
+        _cur_net = net_monthly_calc(p["inc_s"], 2026,
+            p.get("ruling_s", False) and p.get("rs_s", 2026) <= 2026 < p.get("re_s", 2031))
+        _cur_net += net_monthly_calc(p["inc_p"], 2026, False) if p.get("partner") else 0
+        replacement_ratio = ret_target_income / max(_cur_net, 1) * 100
 
-    k5, k6, k7, k8 = st.columns(4)
-    k5.metric("Years to Retirement", f"{years_to_ret} yr",
-              help=f"From age {ret_current_age} to {ret_age}.")
-    k6.metric("Savings Runway",
-              f"{runway_years} yr" if runway_years else "< 1 yr" if starting_capital >= capital_needed else "> 60 yr",
-              help="Years until your growing portfolio hits the capital needed, continuing at your current avg monthly savings.")
-    k7.metric("Portfolio Lasts (post-ret.)",
-              f"{depletion_years} yr" if depletion_years else f">{years_in_ret} yr ✅",
-              help="How long your projected capital sustains the pension gap at the post-retirement return rate.")
-    k8.metric("Net Replacement Ratio",
-              f"{replacement_ratio:.0f}%",
-              help="Target retirement income as % of current net household income. Aim for 70–80%.")
+        # ── KPI strip ────────────────────────────────────────────────────────────
+        st.divider()
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Pension Gap / mo",
+                  f"€{pension_gap:,.0f}",
+                  help="Monthly shortfall: target income minus AOW and occupational pension.")
+        k2.metric("Capital Needed at Retirement",
+                  f"€{capital_needed:,.0f}",
+                  help=f"Gap × 12 ÷ SWR ({ret_swr*100:.1f}%). Lump sum needed on retirement day to fund the shortfall indefinitely.")
+        k3.metric("FIRE Number",
+                  f"€{fire_number:,.0f}",
+                  help="Total portfolio for full independence (no AOW/pension assumed). Same SWR applied to full target income.")
+        k4.metric("Projected Capital at Retirement",
+                  f"€{projected_capital_at_ret:,.0f}",
+                  delta=f"{'✅ Surplus' if projected_capital_at_ret >= capital_needed else '⚠️ Shortfall'} €{abs(projected_capital_at_ret - capital_needed):,.0f}",
+                  delta_color="normal" if projected_capital_at_ret >= capital_needed else "inverse",
+                  help="Forward projection of your wealth at retirement age, growing at the pre-retirement return rate.")
 
-    # ── Charts ───────────────────────────────────────────────────────────────
-    st.divider()
+        k5, k6, k7, k8 = st.columns(4)
+        k5.metric("Years to Retirement", f"{years_to_ret} yr",
+                  help=f"From age {ret_current_age} to {ret_age}.")
+        k6.metric("Savings Runway",
+                  f"{runway_years} yr" if runway_years else "< 1 yr" if starting_capital >= capital_needed else "> 60 yr",
+                  help="Years until your growing portfolio hits the capital needed, continuing at your current avg monthly savings.")
+        k7.metric("Portfolio Lasts (post-ret.)",
+                  f"{depletion_years} yr" if depletion_years else f">{years_in_ret} yr ✅",
+                  help="How long your projected capital sustains the pension gap at the post-retirement return rate.")
+        k8.metric("Net Replacement Ratio",
+                  f"{replacement_ratio:.0f}%",
+                  help="Target retirement income as % of current net household income. Aim for 70–80%.")
 
-    # Chart 1: Portfolio growth to retirement
-    st.markdown("#### 📈 Portfolio Growth to Retirement")
-    _yrs_axis  = list(range(0, years_to_ret + 1))
-    _portfolio_curve = [starting_capital]
-    _cap_c = starting_capital
-    _r_mo_c = (1 + ret_return_pre) ** (1/12) - 1
-    # use projected savings from df_m_a for first n_years, then avg
-    _proj_months = len(df_m_a)
-    _savings_list = list(df_m_a["Net Saving"])
-    _month_counter = 0
-    for _yr in range(1, years_to_ret + 1):
-        for _mo in range(12):
-            _s = _savings_list[_month_counter] if _month_counter < _proj_months else avg_monthly_saving
-            _cap_c = _cap_c * (1 + _r_mo_c) + _s
-            _month_counter += 1
-        _portfolio_curve.append(_cap_c)
+        # ── Charts ───────────────────────────────────────────────────────────────
+        st.divider()
 
-    fig_grow = go.Figure()
-    fig_grow.add_trace(go.Scatter(
-        x=[_dt_ret.date.today().year + y for y in _yrs_axis],
-        y=_portfolio_curve,
-        name="Projected Portfolio",
-        line=dict(color="#1d4ed8", width=2.5),
-        fill="tozeroy", fillcolor="rgba(29,78,216,0.08)"
-    ))
-    fig_grow.add_hline(y=capital_needed, line_dash="dash", line_color="#b91c1c",
-                       annotation_text=f"Capital needed  €{capital_needed:,.0f}",
-                       annotation_position="bottom right")
-    fig_grow.add_hline(y=fire_number, line_dash="dot", line_color="#b45309",
-                       annotation_text=f"FIRE number  €{fire_number:,.0f}",
-                       annotation_position="top right")
-    fig_grow.update_layout(
-        **chart_layout("Portfolio Growth to Retirement", "Portfolio value (€)", height=350,
-                       xaxis_title="Year")
-    )
-    st.plotly_chart(fig_grow, use_container_width=True)
+        # Chart 1: Portfolio growth to retirement
+        st.markdown("#### 📈 Portfolio Growth to Retirement")
+        _yrs_axis  = list(range(0, years_to_ret + 1))
+        _portfolio_curve = [starting_capital]
+        _cap_c = starting_capital
+        _r_mo_c = (1 + ret_return_pre) ** (1/12) - 1
+        # use projected savings from df_m_a for first n_years, then avg
+        _proj_months = len(df_m_a)
+        _savings_list = list(df_m_a["Net Saving"])
+        _month_counter = 0
+        for _yr in range(1, years_to_ret + 1):
+            for _mo in range(12):
+                _s = _savings_list[_month_counter] if _month_counter < _proj_months else avg_monthly_saving
+                _cap_c = _cap_c * (1 + _r_mo_c) + _s
+                _month_counter += 1
+            _portfolio_curve.append(_cap_c)
 
-    # Chart 2: Retirement income waterfall
-    st.markdown("#### 💰 Retirement Income Breakdown")
-    fig_income = go.Figure(go.Bar(
-        x=["AOW (state)", "Occupational Pension", "Private Capital (SWR)", "Target"],
-        y=[ret_aow, ret_pension,
-           projected_capital_at_ret * ret_swr / 12,
-           ret_target_income],
-        marker_color=["#0f766e", "#1d4ed8", "#15803d", "#b91c1c"],
-        text=[f"€{v:,.0f}" for v in [
-            ret_aow, ret_pension,
-            projected_capital_at_ret * ret_swr / 12,
-            ret_target_income
-        ]],
-        textposition="outside",
-    ))
-    fig_income.update_layout(
-        **chart_layout("Monthly Retirement Income Sources vs Target", "€/mo", height=330),
-        showlegend=False,
-    )
-    st.plotly_chart(fig_income, use_container_width=True)
+        fig_grow = go.Figure()
+        fig_grow.add_trace(go.Scatter(
+            x=[_dt_ret.date.today().year + y for y in _yrs_axis],
+            y=_portfolio_curve,
+            name="Projected Portfolio",
+            line=dict(color="#1d4ed8", width=2.5),
+            fill="tozeroy", fillcolor="rgba(29,78,216,0.08)"
+        ))
+        fig_grow.add_hline(y=capital_needed, line_dash="dash", line_color="#b91c1c",
+                           annotation_text=f"Capital needed  €{capital_needed:,.0f}",
+                           annotation_position="bottom right")
+        fig_grow.add_hline(y=fire_number, line_dash="dot", line_color="#b45309",
+                           annotation_text=f"FIRE number  €{fire_number:,.0f}",
+                           annotation_position="top right")
+        fig_grow.update_layout(
+            **chart_layout("Portfolio Growth to Retirement", "Portfolio value (€)", height=350,
+                           xaxis_title="Year")
+        )
+        st.plotly_chart(fig_grow, use_container_width=True)
 
-    # Chart 3: Portfolio depletion in retirement
-    st.markdown("#### 📉 Portfolio Depletion in Retirement")
-    _dep_yrs  = min(years_in_ret, 50)
-    _dep_curve = [projected_capital_at_ret]
-    _cap_d = projected_capital_at_ret
-    for _yr in range(_dep_yrs):
-        for _mo in range(12):
-            _cap_d = _cap_d * (1 + _r_mo_post) - _gap_mo
-        _dep_curve.append(max(_cap_d, 0))
-        if _cap_d <= 0:
-            _dep_curve += [0] * (_dep_yrs - _yr - 1)
-            break
+        # Chart 2: Retirement income waterfall
+        st.markdown("#### 💰 Retirement Income Breakdown")
+        fig_income = go.Figure(go.Bar(
+            x=["AOW (state)", "Occupational Pension", "Private Capital (SWR)", "Target"],
+            y=[ret_aow, ret_pension,
+               projected_capital_at_ret * ret_swr / 12,
+               ret_target_income],
+            marker_color=["#0f766e", "#1d4ed8", "#15803d", "#b91c1c"],
+            text=[f"€{v:,.0f}" for v in [
+                ret_aow, ret_pension,
+                projected_capital_at_ret * ret_swr / 12,
+                ret_target_income
+            ]],
+            textposition="outside",
+        ))
+        fig_income.update_layout(
+            **chart_layout("Monthly Retirement Income Sources vs Target", "€/mo", height=330),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_income, use_container_width=True)
 
-    fig_dep = go.Figure()
-    fig_dep.add_trace(go.Scatter(
-        x=[ret_age + y for y in range(len(_dep_curve))],
-        y=_dep_curve,
-        name="Remaining Capital",
-        line=dict(color="#15803d", width=2.5),
-        fill="tozeroy", fillcolor="rgba(21,128,61,0.08)"
-    ))
-    fig_dep.add_hline(y=0, line_color="#b91c1c", line_width=1)
-    fig_dep.update_layout(
-        **chart_layout("Portfolio Depletion in Retirement", "Remaining capital (€)", height=330,
-                       xaxis_title="Age")
-    )
-    st.plotly_chart(fig_dep, use_container_width=True)
+        # Chart 3: Portfolio depletion in retirement
+        st.markdown("#### 📉 Portfolio Depletion in Retirement")
+        _dep_yrs  = min(years_in_ret, 50)
+        _dep_curve = [projected_capital_at_ret]
+        _cap_d = projected_capital_at_ret
+        for _yr in range(_dep_yrs):
+            for _mo in range(12):
+                _cap_d = _cap_d * (1 + _r_mo_post) - _gap_mo
+            _dep_curve.append(max(_cap_d, 0))
+            if _cap_d <= 0:
+                _dep_curve += [0] * (_dep_yrs - _yr - 1)
+                break
 
-    # ── Sensitivity table ────────────────────────────────────────────────────
-    st.divider()
-    st.markdown("#### 🔢 Capital Needed — Sensitivity (Retirement Age × Target Income)")
-    st.caption(
-        "Shows the lump-sum capital required at retirement for each combination of "
-        "retirement age and target monthly income, at the current SWR. "
-        "Green = your projected capital covers it. Red = shortfall."
-    )
-    _ages     = [55, 60, 62, 65, 67, 70]
-    _incomes  = [2000, 2500, 3000, 3500, 4000, 5000]
-    _tbl_rows = []
-    for _age in _ages:
-        _row = [f"Age {_age}"]
-        for _inc in _incomes:
-            _gap  = max(_inc - pillar1_2, 0)
-            _cap  = _gap * 12 / ret_swr if ret_swr > 0 else 0
-            _ok   = projected_capital_at_ret >= _cap
-            _cell = f"€{_cap/1e6:.2f}M" if _cap >= 1e6 else f"€{_cap:,.0f}"
-            _row.append(("✅ " if _ok else "⚠️ ") + _cell)
-        _tbl_rows.append(_row)
+        fig_dep = go.Figure()
+        fig_dep.add_trace(go.Scatter(
+            x=[ret_age + y for y in range(len(_dep_curve))],
+            y=_dep_curve,
+            name="Remaining Capital",
+            line=dict(color="#15803d", width=2.5),
+            fill="tozeroy", fillcolor="rgba(21,128,61,0.08)"
+        ))
+        fig_dep.add_hline(y=0, line_color="#b91c1c", line_width=1)
+        fig_dep.update_layout(
+            **chart_layout("Portfolio Depletion in Retirement", "Remaining capital (€)", height=330,
+                           xaxis_title="Age")
+        )
+        st.plotly_chart(fig_dep, use_container_width=True)
 
-    _tbl_headers = [""] + [f"€{i:,}/mo" for i in _incomes]
-    _cw_sens = [1.5] + [1.0] * len(_incomes)
-    _cw_total = sum(_cw_sens)
-    _cw_sens_norm = [c / _cw_total for c in _cw_sens]
+        # ── Sensitivity table ────────────────────────────────────────────────────
+        st.divider()
+        st.markdown("#### 🔢 Capital Needed — Sensitivity (Retirement Age × Target Income)")
+        st.caption(
+            "Shows the lump-sum capital required at retirement for each combination of "
+            "retirement age and target monthly income, at the current SWR. "
+            "Green = your projected capital covers it. Red = shortfall."
+        )
+        _ages     = [55, 60, 62, 65, 67, 70]
+        _incomes  = [2000, 2500, 3000, 3500, 4000, 5000]
+        _tbl_rows = []
+        for _age in _ages:
+            _row = [f"Age {_age}"]
+            for _inc in _incomes:
+                _gap  = max(_inc - pillar1_2, 0)
+                _cap  = _gap * 12 / ret_swr if ret_swr > 0 else 0
+                _ok   = projected_capital_at_ret >= _cap
+                _cell = f"€{_cap/1e6:.2f}M" if _cap >= 1e6 else f"€{_cap:,.0f}"
+                _row.append(("✅ " if _ok else "⚠️ ") + _cell)
+            _tbl_rows.append(_row)
 
-    import pandas as _pd_ret
-    _sens_df = _pd_ret.DataFrame(_tbl_rows, columns=_tbl_headers)
-    st.dataframe(_sens_df, hide_index=True, use_container_width=True)
+        _tbl_headers = [""] + [f"€{i:,}/mo" for i in _incomes]
+        _cw_sens = [1.5] + [1.0] * len(_incomes)
+        _cw_total = sum(_cw_sens)
+        _cw_sens_norm = [c / _cw_total for c in _cw_sens]
 
-    # ── Dutch pension explanations ────────────────────────────────────────────
-    st.divider()
-    with st.expander("📚 Dutch Pension System Explained", expanded=False):
-        st.markdown("""
-### The Three Pillars of Dutch Retirement
+        import pandas as _pd_ret
+        _sens_df = _pd_ret.DataFrame(_tbl_rows, columns=_tbl_headers)
+        st.dataframe(_sens_df, hide_index=True, use_container_width=True)
 
-| Pillar | What | Who | Amount |
-|--------|------|-----|--------|
-| **1e pijler — AOW** | State pension | Everyone with 50 years Dutch residency | ~€1,450/mo (single), ~€1,000/mo each (couple) |
-| **2e pijler — Occupational** | Employer pension fund | Most employees | Depends on salary × accrual rate × years |
-| **3e pijler — Private** | Own savings / investments | You | Unlimited (Box 3 taxed) |
+        # ── Dutch pension explanations ────────────────────────────────────────────
+        st.divider()
+        with st.expander("📚 Dutch Pension System Explained", expanded=False):
+            st.markdown("""
+    ### The Three Pillars of Dutch Retirement
 
-### AOW Calculation
-- Full AOW requires **50 years of residency** between ages 15 and 67.
-- Each missing year reduces AOW by **2%** (so 40 years = 80% of full AOW).
-- AOW age is currently **67**; expected to increase to 67y3mo in 2028.
-- Amount indexed annually; couples receive ~69% of single amount per person.
+    | Pillar | What | Who | Amount |
+    |--------|------|-----|--------|
+    | **1e pijler — AOW** | State pension | Everyone with 50 years Dutch residency | ~€1,450/mo (single), ~€1,000/mo each (couple) |
+    | **2e pijler — Occupational** | Employer pension fund | Most employees | Depends on salary × accrual rate × years |
+    | **3e pijler — Private** | Own savings / investments | You | Unlimited (Box 3 taxed) |
 
-### Occupational Pension (2e pijler)
-- Most Dutch employees participate via their sector's pension fund (e.g. ABP, PFZW, PMT).
-- Under **WTP (Wet Toekomst Pensioenen, 2023)** all funds are transitioning to defined contribution.
-- Check **[mijnpensioenoverzicht.nl](https://www.mijnpensioenoverzicht.nl)** for your accrued pension.
-- Typical accrual: 1.5–1.875% of pensionable salary per year (salary minus AOW franchise ≈ €17,000).
+    ### AOW Calculation
+    - Full AOW requires **50 years of residency** between ages 15 and 67.
+    - Each missing year reduces AOW by **2%** (so 40 years = 80% of full AOW).
+    - AOW age is currently **67**; expected to increase to 67y3mo in 2028.
+    - Amount indexed annually; couples receive ~69% of single amount per person.
 
-### Safe Withdrawal Rate (SWR)
-- The **4% rule** (Bengen, 1994; Trinity Study) suggests withdrawing 4%/yr of your portfolio is sustainable for 30 years with a 50/50 stock-bond split.
-- For longer retirements (40–50 years) or all-equity, **3–3.5% is more conservative**.
-- Dutch context: Box 3 taxes on assets above €57,000 threshold reduce effective returns.
+    ### Occupational Pension (2e pijler)
+    - Most Dutch employees participate via their sector's pension fund (e.g. ABP, PFZW, PMT).
+    - Under **WTP (Wet Toekomst Pensioenen, 2023)** all funds are transitioning to defined contribution.
+    - Check **[mijnpensioenoverzicht.nl](https://www.mijnpensioenoverzicht.nl)** for your accrued pension.
+    - Typical accrual: 1.5–1.875% of pensionable salary per year (salary minus AOW franchise ≈ €17,000).
 
-### Box 3 Tax on Investments
-- The Dutch tax authority assumes a fictitious return on assets above the threshold.
-- **2026 rates** (indicative): savings ≈ 1.44% fictitious return, investments ≈ 5.88%, taxed at **36%**.
-- This reduces your effective after-tax return on invested capital — factor this into your pre-retirement return assumption.
+    ### Safe Withdrawal Rate (SWR)
+    - The **4% rule** (Bengen, 1994; Trinity Study) suggests withdrawing 4%/yr of your portfolio is sustainable for 30 years with a 50/50 stock-bond split.
+    - For longer retirements (40–50 years) or all-equity, **3–3.5% is more conservative**.
+    - Dutch context: Box 3 taxes on assets above €57,000 threshold reduce effective returns.
 
-### Zorgtoeslag & AOW
-- AOW income counts toward the zorgtoeslag income test.
-- Full AOW recipients typically no longer qualify for zorgtoeslag.
+    ### Box 3 Tax on Investments
+    - The Dutch tax authority assumes a fictitious return on assets above the threshold.
+    - **2026 rates** (indicative): savings ≈ 1.44% fictitious return, investments ≈ 5.88%, taxed at **36%**.
+    - This reduces your effective after-tax return on invested capital — factor this into your pre-retirement return assumption.
 
-### Vermogensopbouw Tips
-- **Lijfrente (annuity savings)**: tax-deductible up to the annual reservation margin (jaarruimte).
-  - Jaarruimte = 30% × (income − AOW franchise) − pension accrual factor.
-- **Banksparen**: similar to lijfrente but bank-based, more flexible.
-- **Eigen woning**: home equity reduces the need for capital, but is illiquid.
-        """)
+    ### Zorgtoeslag & AOW
+    - AOW income counts toward the zorgtoeslag income test.
+    - Full AOW recipients typically no longer qualify for zorgtoeslag.
 
-    st.divider()
-    st.caption(
-        "⚠️ AOW amounts and rules as of 2026. Pension projections are illustrative — "
-        "check mijnpensioenoverzicht.nl for your actual accrued pension. "
-        "Tax treatment of Box 3 is subject to legislative change. "
-        "This is not financial advice."
-    )
+    ### Vermogensopbouw Tips
+    - **Lijfrente (annuity savings)**: tax-deductible up to the annual reservation margin (jaarruimte).
+      - Jaarruimte = 30% × (income − AOW franchise) − pension accrual factor.
+    - **Banksparen**: similar to lijfrente but bank-based, more flexible.
+    - **Eigen woning**: home equity reduces the need for capital, but is illiquid.
+            """)
+
+        st.divider()
+        st.caption(
+            "⚠️ AOW amounts and rules as of 2026. Pension projections are illustrative — "
+            "check mijnpensioenoverzicht.nl for your actual accrued pension. "
+            "Tax treatment of Box 3 is subject to legislative change. "
+            "This is not financial advice."
+        )
