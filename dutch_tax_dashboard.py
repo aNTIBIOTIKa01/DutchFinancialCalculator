@@ -13,6 +13,932 @@ import plotly.graph_objects as go
 from io import BytesIO
 import os, json
 
+
+# ════════════════════════════════════════════════════════════════════════════
+# PDF EXPORT  —  white A4 report with matplotlib charts + Retirement section
+# ════════════════════════════════════════════════════════════════════════════
+
+def _chart_png(fig_fn, width_in=6.5, height_in=2.8, dpi=150):
+    """
+    Call fig_fn(fig, ax) to draw onto a matplotlib figure, return PNG BytesIO.
+    Always uses a clean white background matching the PDF palette.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import io as _io
+
+    BLUE   = "#1d4ed8"
+    GREEN  = "#15803d"
+    RED    = "#b91c1c"
+    AMBER  = "#b45309"
+    TEAL   = "#0f766e"
+    GRID   = "#e2e8f0"
+    TICK   = "#475569"
+
+    fig, ax = plt.subplots(figsize=(width_in, height_in))
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    ax.tick_params(colors=TICK, labelsize=7)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color(GRID)
+    ax.spines["bottom"].set_color(GRID)
+    ax.yaxis.grid(True, color=GRID, linewidth=0.5, zorder=0)
+    ax.set_axisbelow(True)
+
+    fig_fn(fig, ax, BLUE=BLUE, GREEN=GREEN, RED=RED, AMBER=AMBER, TEAL=TEAL, GRID=GRID)
+
+    buf = _io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight",
+                facecolor="white", edgecolor="none")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def generate_pdf_report(pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
+                         ab_mode=False,
+                         ret_params=None) -> bytes:
+    """
+    Professional minimalist A4 PDF with embedded matplotlib charts.
+    White background, blue accent, clean tables, full Retirement section.
+    Pass ret_params dict with retirement inputs; falls back to defaults if None.
+    """
+    import io, datetime as _dt
+    import numpy as _np
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        HRFlowable, PageBreak, KeepTogether, Image,
+    )
+
+    # ── palette ──────────────────────────────────────────────────────────────
+    DARK    = colors.HexColor("#1e293b")
+    MID     = colors.HexColor("#475569")
+    LIGHT   = colors.HexColor("#94a3b8")
+    RULE    = colors.HexColor("#e2e8f0")
+    BLUE    = colors.HexColor("#1d4ed8")
+    GREEN   = colors.HexColor("#15803d")
+    RED     = colors.HexColor("#b91c1c")
+    AMBER   = colors.HexColor("#b45309")
+    TEAL    = colors.HexColor("#0f766e")
+    HDR_BG  = colors.HexColor("#1e3a5f")
+    ZEBRA   = colors.HexColor("#f8fafc")
+    WHITE   = colors.white
+
+    PAGE_W, PAGE_H = A4
+    LM, RM = 2.0 * cm, 2.0 * cm
+    W = PAGE_W - LM - RM
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=LM, rightMargin=RM,
+        topMargin=2.6*cm, bottomMargin=2.2*cm,
+        title="Dutch Financial Dashboard — Pro Report",
+        author="Dutch Financial Dashboard",
+    )
+
+    # ── style helpers ────────────────────────────────────────────────────────
+    _sc = {}
+    def S(name, **kw):
+        key = (name, tuple(sorted(kw.items())))
+        if key not in _sc:
+            _sc[key] = ParagraphStyle(name, **kw)
+        return _sc[key]
+
+    sH1  = S("H1",  fontSize=15, leading=20, textColor=BLUE,
+              fontName="Helvetica-Bold", spaceBefore=14, spaceAfter=4)
+    sH2  = S("H2",  fontSize=11, leading=15, textColor=DARK,
+              fontName="Helvetica-Bold", spaceBefore=8, spaceAfter=3)
+    sBod = S("Bod", fontSize=9,  leading=13, textColor=MID,
+              fontName="Helvetica", spaceAfter=4)
+    sCap = S("Cap", fontSize=7.5,leading=11, textColor=LIGHT,
+              fontName="Helvetica-Oblique", spaceAfter=3)
+    sOK  = S("OK",  fontSize=9,  leading=13, textColor=GREEN,
+              fontName="Helvetica-Bold", spaceAfter=3)
+    sWRN = S("WRN", fontSize=9,  leading=13, textColor=RED,
+              fontName="Helvetica-Bold", spaceAfter=3)
+
+    def HR(thick=0.5, color=RULE):
+        return HRFlowable(width="100%", thickness=thick, color=color,
+                          spaceAfter=4, spaceBefore=4)
+
+    # ── embed chart ───────────────────────────────────────────────────────────
+    def embed(fig_fn, caption="", w=W, h=5.5*cm, **extra):
+        """Draw a matplotlib chart via fig_fn, embed as Image."""
+        png = _chart_png(lambda fig, ax, **kw: fig_fn(fig, ax, **kw),
+                         width_in=w / cm * 0.39370,
+                         height_in=h / cm * 0.39370)
+        items = [Image(png, width=w, height=h)]
+        if caption:
+            items.append(Paragraph(caption, sCap))
+        return items
+
+    # ── KPI row ──────────────────────────────────────────────────────────────
+    def kpi_row(items):
+        n  = len(items)
+        cw = [W / n] * n
+        vals = [Paragraph(f"<b>{v}</b>",
+                    S(f"KV{i}{n}", fontSize=14, leading=18, textColor=c,
+                      fontName="Helvetica-Bold", alignment=TA_CENTER))
+                for i, (_, v, c) in enumerate(items)]
+        labs = [Paragraph(lbl,
+                    S(f"KL{i}{n}", fontSize=7.5, leading=10, textColor=LIGHT,
+                      fontName="Helvetica", alignment=TA_CENTER))
+                for i, (lbl, _, _) in enumerate(items)]
+        t = Table([vals, labs], colWidths=cw)
+        t.setStyle(TableStyle([
+            ("BOX",         (0,0),(-1,-1), 0.3, RULE),
+            ("INNERGRID",   (0,0),(-1,-1), 0.3, RULE),
+            ("TOPPADDING",  (0,0),(-1,-1), 9),
+            ("BOTTOMPADDING",(0,0),(-1,-1), 9),
+            ("LEFTPADDING", (0,0),(-1,-1), 6),
+            ("RIGHTPADDING",(0,0),(-1,-1), 6),
+            ("LINEBELOW",   (0,0),(-1,0),  0.8, RULE),
+        ]))
+        return t
+
+    # ── data table ───────────────────────────────────────────────────────────
+    def dtbl(headers, rows, cw=None):
+        n  = len(headers)
+        cw = cw or [W / n] * n
+        hrow = [Paragraph(h, S(f"TH{i}{h[:3]}", fontSize=8, leading=10,
+                               textColor=WHITE, fontName="Helvetica-Bold",
+                               alignment=TA_CENTER))
+                for i, h in enumerate(headers)]
+        tdata = [hrow]
+        for ri, row in enumerate(rows):
+            tdata.append([
+                Paragraph(str(cell), S(f"TD{ri}{ci}", fontSize=8, leading=10,
+                          textColor=DARK, fontName="Helvetica", alignment=TA_CENTER))
+                for ci, cell in enumerate(row)
+            ])
+        ts = [
+            ("BACKGROUND",    (0,0),(-1,0),  HDR_BG),
+            ("TOPPADDING",    (0,0),(-1,-1), 5),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 5),
+            ("LEFTPADDING",   (0,0),(-1,-1), 5),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 5),
+            ("BOX",           (0,0),(-1,-1), 0.3, RULE),
+            ("INNERGRID",     (0,1),(-1,-1), 0.3, RULE),
+            ("LINEBELOW",     (0,0),(-1,0),  0.3, colors.HexColor("#3b82f6")),
+        ]
+        for ri in range(1, len(tdata)):
+            ts.append(("BACKGROUND", (0,ri),(-1,ri), ZEBRA if ri%2==0 else WHITE))
+        return Table(tdata, colWidths=cw, style=TableStyle(ts),
+                     hAlign="LEFT", repeatRows=1)
+
+    # ── page header/footer ────────────────────────────────────────────────────
+    def _on_page(canvas, doc):
+        canvas.saveState()
+        canvas.setFillColor(BLUE)
+        canvas.rect(0, PAGE_H - 0.55*cm, PAGE_W, 0.55*cm, fill=1, stroke=0)
+        canvas.setFillColor(WHITE)
+        canvas.setFont("Helvetica-Bold", 7)
+        canvas.drawString(LM, PAGE_H - 0.38*cm,
+                          "Dutch Financial Dashboard  \u00b7  Pro Report")
+        bx = PAGE_W - RM - 1.8*cm
+        canvas.setFillColor(colors.HexColor("#fbbf24"))
+        canvas.roundRect(bx, PAGE_H-0.50*cm, 1.7*cm, 0.40*cm, 3, fill=1, stroke=0)
+        canvas.setFillColor(colors.HexColor("#1e1e1e"))
+        canvas.setFont("Helvetica-Bold", 6.5)
+        canvas.drawCentredString(bx+0.85*cm, PAGE_H-0.33*cm, "\u2b50 PRO PLAN")
+        canvas.setStrokeColor(RULE)
+        canvas.setLineWidth(0.4)
+        canvas.line(LM, 1.8*cm, PAGE_W-RM, 1.8*cm)
+        canvas.setFillColor(LIGHT)
+        canvas.setFont("Helvetica", 7)
+        canvas.drawString(LM, 1.3*cm,
+                          "Approximations only \u2014 consult a belastingadviseur / financieel planner.")
+        canvas.drawRightString(PAGE_W-RM, 1.3*cm, f"Page {doc.page}")
+        canvas.restoreState()
+
+    # ════════════════════════════════════════════════════════════════
+    # Retire params with defaults
+    # ════════════════════════════════════════════════════════════════
+    _rd = ret_params or {}
+    ret_current_age  = _rd.get("ret_current_age",  32)
+    ret_age_r        = _rd.get("ret_age",           67)
+    ret_target       = _rd.get("ret_target_income", 3500)
+    ret_aow_r        = _rd.get("ret_aow",           1450)
+    ret_pension_r    = _rd.get("ret_pension",        500)
+    ret_swr_r        = _rd.get("ret_swr",           0.035)
+    ret_ret_pre      = _rd.get("ret_return_pre",    0.07)
+    ret_ret_post     = _rd.get("ret_return_post",   0.04)
+
+    years_to_ret_r   = max(ret_age_r - ret_current_age, 1)
+    pillar12_r       = ret_aow_r + ret_pension_r
+    pension_gap_r    = max(ret_target - pillar12_r, 0)
+    capital_needed_r = pension_gap_r * 12 / ret_swr_r if ret_swr_r > 0 else 0
+    fire_r           = ret_target * 12 / ret_swr_r if ret_swr_r > 0 else 0
+
+    _start_cap_r     = df_w_a.iloc[-1]["Total Wealth (Buy)"]
+    _avg_sav_r       = df_m_a["Net Saving"].mean()
+    _r_mo_r          = (1 + ret_ret_pre) ** (1/12) - 1
+    _cap_r           = _start_cap_r
+    _proj_m          = len(df_m_a)
+    _sav_list        = list(df_m_a["Net Saving"])
+    _mc              = 0
+    _n_yrs_proj      = pa.get("n_years", 5)
+    for _yr in range(years_to_ret_r):
+        for _mo in range(12):
+            _s = _sav_list[_mc] if _mc < _proj_m else _avg_sav_r
+            _cap_r = _cap_r * (1 + _r_mo_r) + _s
+            _mc += 1
+    proj_cap_ret = max(_cap_r, 0)
+
+    # Depletion curve
+    _r_mo_post_r   = (1 + ret_ret_post) ** (1/12) - 1
+    _dep_yrs_r     = min(100 - ret_age_r, 50)
+    _dep_curve_r   = [proj_cap_ret]
+    _cap_d_r       = proj_cap_ret
+    for _yr in range(_dep_yrs_r):
+        for _mo in range(12):
+            _cap_d_r = _cap_d_r * (1 + _r_mo_post_r) - pension_gap_r
+        _dep_curve_r.append(max(_cap_d_r, 0))
+        if _cap_d_r <= 0:
+            _dep_curve_r += [0] * (_dep_yrs_r - _yr - 1)
+            break
+
+    # Portfolio growth curve
+    _port_curve = [_start_cap_r]
+    _cap_g = _start_cap_r
+    _mc2 = 0
+    for _yr in range(years_to_ret_r):
+        for _mo in range(12):
+            _s = _sav_list[_mc2] if _mc2 < _proj_m else _avg_sav_r
+            _cap_g = _cap_g * (1 + _r_mo_r) + _s
+            _mc2 += 1
+        _port_curve.append(_cap_g)
+
+    import datetime as _dt2
+    _base_yr = _dt2.date.today().year
+    _port_years = [_base_yr + y for y in range(len(_port_curve))]
+
+    # ════════════════════════════════════════════════════════════════
+    # STORY
+    # ════════════════════════════════════════════════════════════════
+    story = []
+    today = _dt.date.today()
+    p     = pa
+    sg    = p.get("sal_growth", 0.0)
+
+    # ── COVER ────────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 1.0*cm))
+    story.append(Paragraph("Dutch Financial Dashboard",
+        S("CVT", fontSize=26, leading=32, textColor=DARK,
+          fontName="Helvetica-Bold", alignment=TA_LEFT)))
+    story.append(Paragraph("Personal Financial Projection  \u2014  Pro Report",
+        S("CVS", fontSize=12, leading=16, textColor=MID,
+          fontName="Helvetica", alignment=TA_LEFT, spaceAfter=4)))
+    story.append(HR(1.5, BLUE))
+    _scen = p.get("scenario_label") or "Scenario A"
+    _yrs  = p.get("n_years", 5)
+    story.append(Paragraph(
+        f"Scenario: <b>{_scen}</b> \u00a0\u00b7\u00a0 "
+        f"Horizon: <b>{_yrs} years</b> \u00a0\u00b7\u00a0 "
+        f"Generated: <b>{today:%d %B %Y}</b>",
+        S("CVMeta", fontSize=9, leading=13, textColor=MID,
+          fontName="Helvetica", spaceAfter=10)))
+    _badge_row = [[Paragraph(
+        "\u2b50  PRO PLAN  \u2014  All features included  \u2014  "
+        "Income &amp; Tax \u00b7 Buy vs Rent \u00b7 Mortgage \u00b7 "
+        "Scenario A/B \u00b7 Actuals \u00b7 Retirement \u00b7 PDF Export",
+        S("BadgeTxt", fontSize=8.5, leading=12, textColor=WHITE,
+          fontName="Helvetica-Bold", alignment=TA_CENTER))]]
+    _badge_t = Table(_badge_row, colWidths=[W])
+    _badge_t.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,-1),BLUE),
+        ("TOPPADDING",(0,0),(-1,-1),7),("BOTTOMPADDING",(0,0),(-1,-1),7),
+        ("LEFTPADDING",(0,0),(-1,-1),10),("RIGHTPADDING",(0,0),(-1,-1),10),
+    ]))
+    story.append(_badge_t)
+    story.append(Spacer(1, 0.4*cm))
+
+    import datetime as _dt3
+    cur_yr = _dt3.date.today().year
+    _a30s  = p.get("ruling_s",True) and p.get("rs_s",p["rs"]) <= cur_yr < p.get("re_s",p["re"])
+    _a30p  = p.get("ruling_p",False) and p.get("rs_p",p["rs"]) <= cur_yr < p.get("re_p",p["re"])
+    net_s_now = net_monthly_calc(p["inc_s"], cur_yr, _a30s)
+    net_p_now = net_monthly_calc(p["inc_p"], cur_yr, _a30p) if p["partner"] else 0
+    mp_now    = mort_payment(p["house_price"], p["dp"], p["mort_rate"])
+    fixed_now = sum(p.get(k,0) for k in
+                    ["hi","cf","ci","gr","ot","utilities","phone","subscriptions","gym","dog"])
+    story.append(kpi_row([
+        ("Gross income / yr",  f"\u20ac{p['inc_s']:,.0f}",          DARK),
+        ("Net income / mo",    f"\u20ac{net_s_now+net_p_now:,.0f}", GREEN),
+        ("House price",        f"\u20ac{p['house_price']:,.0f}",     BLUE),
+        ("Mortgage / mo",      f"\u20ac{mp_now:,.0f}",              RED),
+    ]))
+    story.append(Spacer(1,0.15*cm))
+    story.append(kpi_row([
+        ("Fixed expenses / mo",f"\u20ac{fixed_now:,.0f}",           AMBER),
+        ("Starting savings",   f"\u20ac{p.get('savings',0):,.0f}",  TEAL),
+        ("Retirement age",     f"{ret_age_r}",                      MID),
+        ("Capital needed",     f"\u20ac{capital_needed_r:,.0f}",
+         GREEN if proj_cap_ret >= capital_needed_r else RED),
+    ]))
+    story.append(Spacer(1,0.5*cm))
+    story.append(HR(0.3, RULE))
+    story.append(Paragraph(
+        "\u26a0\ufe0f  Approximations of Dutch tax law 2026\u20132030.  "
+        "Always consult a qualified belastingadviseur / financieel planner.",
+        sCap))
+
+    # ── TABLE OF CONTENTS ────────────────────────────────────────────────────
+    story.append(PageBreak())
+    story.append(Paragraph("Contents", sH1))
+    story.append(HR(1.0, BLUE))
+    _toc = [
+        ("1", "Income &amp; Tax",
+         "Annual net income \u00b7 30% ruling impact \u00b7 monthly P&amp;L \u00b7 chart"),
+        ("2", "Buy vs Rent",
+         "Wealth projection chart \u00b7 crossover date \u00b7 year-end summary"),
+        ("3", "Mortgage Analysis",
+         "Annuity vs Linear chart \u00b7 MRI benefit \u00b7 30-year net cost"),
+        ("4", "Monthly Expenses",
+         "Expense breakdown chart \u00b7 future recurring costs"),
+    ]
+    _sec = 4
+    if ab_mode:
+        _sec += 1
+        _toc.append((str(_sec), "Scenario A/B Comparison",
+                     "Side-by-side outcome table for both scenarios"))
+    _sec += 1
+    _toc.append((str(_sec), "Retirement Planning",
+                 "Portfolio growth chart \u00b7 income waterfall \u00b7 depletion curve \u00b7 sensitivity table"))
+    _sec += 1
+    _toc.append((str(_sec), "Setup Summary", "All input parameters used in this report"))
+
+    _toc_rows = []
+    for num, title, desc in _toc:
+        _toc_rows.append([
+            Paragraph(num, S(f"TN{num}", fontSize=10, leading=14, textColor=BLUE,
+                             fontName="Helvetica-Bold")),
+            Paragraph(f"<b>{title}</b>", S(f"TT{num}", fontSize=10, leading=14,
+                                           textColor=DARK, fontName="Helvetica-Bold")),
+            Paragraph(desc, S(f"TD{num}", fontSize=8.5, leading=12,
+                              textColor=MID, fontName="Helvetica")),
+        ])
+    _toc_t = Table(_toc_rows, colWidths=[0.7*cm, 5.2*cm, W-5.9*cm])
+    _toc_t.setStyle(TableStyle([
+        ("TOPPADDING",(0,0),(-1,-1),7),("BOTTOMPADDING",(0,0),(-1,-1),7),
+        ("LEFTPADDING",(0,0),(-1,-1),4),("RIGHTPADDING",(0,0),(-1,-1),4),
+        ("LINEBELOW",(0,0),(-1,-1),0.3,RULE),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+    ]))
+    story.append(_toc_t)
+    story.append(PageBreak())
+
+    # ════════════════════════════════════════════════════════════════
+    # 1 — INCOME & TAX
+    # ════════════════════════════════════════════════════════════════
+    story.append(Paragraph("1  \u2014  Income &amp; Tax", sH1))
+    story.append(HR(1.0, BLUE))
+
+    years  = sorted(df_m_a["Year"].unique())
+    ruling_active = p.get("ruling_s", True)
+    re_yr  = p.get("re_s", p["re"])
+
+    story.append(Paragraph("Annual Net Income vs Tax Burden", sH2))
+    h_tax = ["Year", "30% Ruling", "Gross / yr", "Net / yr", "Net / mo", "Eff. Rate"]
+    r_tax = []
+    for yr in years:
+        a30   = ruling_active and p.get("rs_s", p["rs"]) <= yr < re_yr
+        gross = p["inc_s"] * (1 + sg) ** (yr - 2026)
+        net_a = net_annual_calc(gross, yr, a30)
+        r_tax.append([str(yr), "\u2713" if a30 else "\u2014",
+                      f"\u20ac{gross:,.0f}", f"\u20ac{net_a:,.0f}",
+                      f"\u20ac{net_a/12:,.0f}", f"{(gross-net_a)/gross*100:.1f}%"])
+    story.append(dtbl(h_tax, r_tax, [W*0.10,W*0.13,W*0.20,W*0.20,W*0.20,W*0.17]))
+    story.append(Spacer(1,0.25*cm))
+
+    if ruling_active:
+        net_on  = net_monthly_calc(p["inc_s"]*(1+sg)**(re_yr-1-2026), re_yr-1, True)
+        net_off = net_monthly_calc(p["inc_s"]*(1+sg)**(re_yr-2026),   re_yr,   False)
+        drop    = net_on - net_off
+        story.append(Paragraph(
+            f"\u26a0\ufe0f  30% ruling expires Jan {re_yr}: monthly net drops "
+            f"\u20ac{drop:,.0f}  (\u20ac{net_on:,.0f} \u2192 \u20ac{net_off:,.0f}/mo).", sWRN))
+
+    # CHART: net income + expenses + savings
+    _dates_num = list(range(len(df_m_a)))
+    _net_vals  = list(df_m_a["Total Net"])
+    _exp_vals  = list(df_m_a["Total Expenses"])
+    _sav_vals  = list(df_m_a["Net Saving"])
+    _date_lbls = [d.strftime("%b %y") for d in df_m_a["Date"]]
+
+    def _draw_income(fig, ax, **kw):
+        ax.fill_between(_dates_num, _net_vals, alpha=0.12, color=kw["BLUE"])
+        ax.plot(_dates_num, _net_vals, color=kw["BLUE"], lw=2, label="Net Income")
+        ax.plot(_dates_num, _exp_vals, color=kw["RED"],  lw=1.5, label="Total Expenses")
+        ax.plot(_dates_num, _sav_vals, color=kw["GREEN"], lw=1.5, ls="--", label="Monthly Savings")
+        step = max(1, len(_dates_num)//8)
+        ax.set_xticks(_dates_num[::step])
+        ax.set_xticklabels(_date_lbls[::step], rotation=30, ha="right", fontsize=6.5)
+        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x:,.0f}")
+        ax.legend(fontsize=7, framealpha=0.9)
+        ax.set_title("Monthly Net Income, Expenses & Savings", fontsize=9, fontweight="bold",
+                     color="#1e293b", pad=6)
+
+    story += embed(_draw_income,
+                   "Blue = net income, red = total expenses, green dashed = monthly savings surplus.")
+
+    story.append(Paragraph("Monthly P&amp;L \u2014 First 24 Months", sH2))
+    h_pnl = ["Date","Net Income","Total Expenses","Housing","MRI Benefit","Savings"]
+    r_pnl = []
+    for _, row in df_m_a.head(24).iterrows():
+        r_pnl.append([row["Date"].strftime("%b %Y"),
+                      f"\u20ac{row['Total Net']:,.0f}", f"\u20ac{row['Total Expenses']:,.0f}",
+                      f"\u20ac{row['Housing Cost']:,.0f}", f"\u20ac{row['MRI Benefit']:,.0f}",
+                      f"\u20ac{row['Net Saving']:,.0f}"])
+    story.append(dtbl(h_pnl, r_pnl, [W*0.14,W*0.16,W*0.17,W*0.16,W*0.16,W*0.21]))
+    story.append(PageBreak())
+
+    # ════════════════════════════════════════════════════════════════
+    # 2 — BUY VS RENT
+    # ════════════════════════════════════════════════════════════════
+    story.append(Paragraph("2  \u2014  Buy vs Rent", sH1))
+    story.append(HR(1.0, BLUE))
+
+    dw    = df_w_a
+    fin   = dw.iloc[-1]
+    delta = fin["Wealth Delta"]
+    story.append(kpi_row([
+        ("End Wealth \u2014 Buy",  f"\u20ac{fin['Total Wealth (Buy)']:,.0f}",  GREEN),
+        ("End Wealth \u2014 Rent", f"\u20ac{fin['Total Wealth (Rent)']:,.0f}", BLUE),
+        ("Buy vs Rent Edge",("+" if delta>=0 else "")+f"\u20ac{delta:,.0f}",
+         GREEN if delta>=0 else RED),
+        ("Home Equity (end)", f"\u20ac{fin['Home Equity']:,.0f}", AMBER),
+    ]))
+    story.append(Spacer(1,0.2*cm))
+
+    cx_row = dw[dw["Wealth Delta"]>0].head(1)
+    if not cx_row.empty:
+        cx_date = cx_row["Date"].iloc[0]
+        cx_yrs  = (cx_date - dw["Date"].iloc[0]).days / 365.25
+        story.append(Paragraph(
+            f"Buying overtakes renting after <b>{cx_yrs:.1f} years</b> "
+            f"(around <b>{cx_date:%B %Y}</b>).", sOK))
+    else:
+        story.append(Paragraph(
+            "Within this projection window, buying has not overtaken renting.", sWRN))
+
+    # CHART: wealth comparison
+    _dw_dates = list(range(len(dw)))
+    _dw_buy   = list(dw["Total Wealth (Buy)"])
+    _dw_rent  = list(dw["Total Wealth (Rent)"])
+    _dw_eq    = list(dw["Home Equity"])
+    _dw_lbls  = [d.strftime("%b %y") for d in dw["Date"]]
+
+    def _draw_bvr(fig, ax, **kw):
+        ax.plot(_dw_dates, _dw_buy,  color=kw["GREEN"], lw=2.5, label="Total Wealth (Buy)")
+        ax.plot(_dw_dates, _dw_rent, color=kw["RED"],   lw=2,   label="Total Wealth (Rent)")
+        ax.plot(_dw_dates, _dw_eq,   color=kw["AMBER"], lw=1.5, ls=":", label="Home Equity")
+        step = max(1, len(_dw_dates)//8)
+        ax.set_xticks(_dw_dates[::step])
+        ax.set_xticklabels(_dw_lbls[::step], rotation=30, ha="right", fontsize=6.5)
+        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x/1e3:.0f}k")
+        ax.legend(fontsize=7, framealpha=0.9)
+        ax.set_title("Total Net Worth: Buy vs Rent", fontsize=9, fontweight="bold",
+                     color="#1e293b", pad=6)
+
+    story += embed(_draw_bvr, "Green = buy scenario, red = rent scenario, amber dotted = home equity.")
+
+    story.append(Paragraph("Year-End Wealth Summary", sH2))
+    daw = dw.groupby("Year").last().reset_index()
+    h_w = ["Year","House Value","Mortgage Bal.","Home Equity",
+           "Cash (Buy)","Wealth (Buy)","Wealth (Rent)","Buy Edge"]
+    r_w = []
+    for _, row in daw.iterrows():
+        edge = row["Total Wealth (Buy)"] - row["Total Wealth (Rent)"]
+        r_w.append([str(int(row["Year"])),
+                    f"\u20ac{row['House Value']:,.0f}", f"\u20ac{row['Mortgage Balance']:,.0f}",
+                    f"\u20ac{row['Home Equity']:,.0f}", f"\u20ac{row['Cash (Buy)']:,.0f}",
+                    f"\u20ac{row['Total Wealth (Buy)']:,.0f}",
+                    f"\u20ac{row['Total Wealth (Rent)']:,.0f}",
+                    ("+" if edge>=0 else "")+f"\u20ac{edge:,.0f}"])
+    story.append(dtbl(h_w, r_w, [W*0.09,W*0.13,W*0.12,W*0.12,W*0.12,W*0.13,W*0.13,W*0.16]))
+    story.append(PageBreak())
+
+    # ════════════════════════════════════════════════════════════════
+    # 3 — MORTGAGE
+    # ════════════════════════════════════════════════════════════════
+    story.append(Paragraph("3  \u2014  Mortgage Analysis", sH1))
+    story.append(HR(1.0, BLUE))
+
+    loan    = p["house_price"] * (1 - p["dp"])
+    df_ann  = amortisation_schedule(p["house_price"], p["dp"], p["mort_rate"],
+                                    "Annuity (annuïteit)", 30)
+    df_lin  = amortisation_schedule(p["house_price"], p["dp"], p["mort_rate"],
+                                    "Linear (lineair)", 30)
+    ann_net1 = df_ann["Net_Payment"].iloc[0]
+    lin_net1 = df_lin["Net_Payment"].iloc[0]
+    ann_mri1 = df_ann["MRI_Benefit"].iloc[0]
+    story.append(kpi_row([
+        ("Loan Amount",            f"\u20ac{loan:,.0f}",     BLUE),
+        ("Annuity Net/mo (mo 1)",  f"\u20ac{ann_net1:,.0f}", GREEN),
+        ("Linear Net/mo (mo 1)",   f"\u20ac{lin_net1:,.0f}", AMBER),
+        ("MRI Benefit/mo (mo 1)",  f"\u20ac{ann_mri1:,.0f}", TEAL),
+    ]))
+    story.append(Spacer(1,0.2*cm))
+
+    # CHART: mortgage net payment over projection period
+    n_proj = p.get("n_years",5) * 12
+    _ann_d = list(range(min(n_proj, len(df_ann))))
+    _ann_net = list(df_ann.head(n_proj)["Net_Payment"])
+    _lin_net = list(df_lin.head(n_proj)["Net_Payment"])
+    _mri_ann = list(df_ann.head(n_proj)["MRI_Benefit"])
+    _mort_lbls = [d.strftime("%b %y") for d in df_ann.head(n_proj)["Date"]]
+
+    def _draw_mort(fig, ax, **kw):
+        ax.plot(_ann_d, _ann_net, color=kw["BLUE"], lw=2, label="Annuity Net")
+        ax.plot(_ann_d, _lin_net, color=kw["AMBER"], lw=2, ls="--", label="Linear Net")
+        ax.plot(_ann_d, _mri_ann, color=kw["GREEN"], lw=1.5, ls=":", label="MRI Benefit (Ann.)")
+        step = max(1, len(_ann_d)//8)
+        ax.set_xticks(_ann_d[::step])
+        ax.set_xticklabels(_mort_lbls[::step], rotation=30, ha="right", fontsize=6.5)
+        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x:,.0f}")
+        ax.legend(fontsize=7, framealpha=0.9)
+        ax.set_title("Net Monthly Mortgage Payment vs MRI Tax Benefit", fontsize=9,
+                     fontweight="bold", color="#1e293b", pad=6)
+
+    story += embed(_draw_mort, "Blue = annuity net, amber dashed = linear net, green dotted = MRI benefit.")
+
+    story.append(Paragraph("Annuity vs Linear \u2014 Year-End Summary", sH2))
+    df_ay = df_ann.groupby("Year").agg(
+        Ann_Pay=("Payment","sum"), Ann_Int=("Interest","sum"),
+        Ann_MRI=("MRI_Benefit","sum"), Ann_Bal=("Balance","last")).reset_index()
+    df_ly = df_lin.groupby("Year").agg(
+        Lin_Pay=("Payment","sum"), Lin_Int=("Interest","sum"),
+        Lin_MRI=("MRI_Benefit","sum"), Lin_Bal=("Balance","last")).reset_index()
+    df_yr = df_ay.merge(df_ly, on="Year").head(p.get("n_years",5))
+    h_m   = ["Year","Ann.Pay/yr","Ann.Int/yr","Ann.MRI/yr","Ann.Bal",
+              "Lin.Pay/yr","Lin.Int/yr","Lin.MRI/yr","Lin.Bal"]
+    r_m   = []
+    for _, row in df_yr.iterrows():
+        r_m.append([str(int(row["Year"])),
+                    f"\u20ac{row['Ann_Pay']:,.0f}", f"\u20ac{row['Ann_Int']:,.0f}",
+                    f"\u20ac{row['Ann_MRI']:,.0f}", f"\u20ac{row['Ann_Bal']:,.0f}",
+                    f"\u20ac{row['Lin_Pay']:,.0f}", f"\u20ac{row['Lin_Int']:,.0f}",
+                    f"\u20ac{row['Lin_MRI']:,.0f}", f"\u20ac{row['Lin_Bal']:,.0f}"])
+    story.append(dtbl(h_m, r_m, [W*0.09]+[W*0.114]*8))
+    ann_30 = df_ann["Payment"].sum() - df_ann["MRI_Benefit"].sum()
+    lin_30 = df_lin["Payment"].sum() - df_lin["MRI_Benefit"].sum()
+    save30 = ann_30 - lin_30
+    story.append(Spacer(1,0.2*cm))
+    story.append(kpi_row([
+        ("Annuity net total (30yr)", f"\u20ac{ann_30:,.0f}", RED),
+        ("Linear net total (30yr)",  f"\u20ac{lin_30:,.0f}", GREEN),
+        ("Saving with Linear",       f"\u20ac{save30:,.0f}", AMBER),
+    ]))
+    story.append(PageBreak())
+
+    # ════════════════════════════════════════════════════════════════
+    # 4 — EXPENSES
+    # ════════════════════════════════════════════════════════════════
+    story.append(Paragraph("4  \u2014  Monthly Expenses", sH1))
+    story.append(HR(1.0, BLUE))
+
+    exp_cats = [
+        ("Health Insurance",    p["hi"]),
+        ("Car (finance+ins.)",  p["cf"]+p["ci"]),
+        ("Groceries",           p["gr"]),
+        ("Utilities",           p.get("utilities",0)),
+        ("Phone & Subscr.",     p.get("phone",0)+p.get("subscriptions",0)),
+        ("Gym",                 p.get("gym",0)),
+        ("Dog",                 p.get("dog",0)),
+        ("Other",               p["ot"]),
+    ]
+    grand = sum(v for _,v in exp_cats) + mp_now
+    _exp_labels = [c for c,v in exp_cats if v>0] + ["Mortgage"]
+    _exp_vals_p = [v for _,v in exp_cats if v>0] + [mp_now]
+    _pie_colors = ["#1d4ed8","#d97706","#15803d","#0f766e",
+                   "#7c3aed","#db2777","#ea580c","#64748b","#b91c1c"]
+
+    def _draw_pie(fig, ax, **kw):
+        import matplotlib.pyplot as _plt
+        ax.axis("off")
+        wedges, texts, autotexts = ax.pie(
+            _exp_vals_p,
+            labels=_exp_labels,
+            colors=_pie_colors[:len(_exp_vals_p)],
+            autopct="%1.0f%%",
+            startangle=90,
+            pctdistance=0.75,
+            labeldistance=1.05,
+            textprops={"fontsize": 6.5},
+        )
+        for at in autotexts:
+            at.set_fontsize(6)
+            at.set_color("white")
+        ax.set_title("Monthly Expense Breakdown", fontsize=9, fontweight="bold",
+                     color="#1e293b", pad=6)
+
+    story += embed(_draw_pie, "Proportion of each expense category at start of projection.",
+                   h=6.0*cm)
+
+    exp_rows = [[cat, f"\u20ac{val:,.0f}/mo", f"{val/grand*100:.1f}%"]
+                for cat,val in exp_cats if val>0]
+    exp_rows.append(["Mortgage (gross)", f"\u20ac{mp_now:,.0f}/mo",
+                     f"{mp_now/grand*100:.1f}%"])
+    exp_rows.append(["\u2014\u2014 TOTAL \u2014\u2014", f"\u20ac{grand:,.0f}/mo", "100%"])
+    story.append(dtbl(["Category","Amount","% of Total"],
+                      exp_rows, [W*0.52,W*0.26,W*0.22]))
+    fe_list = pa.get("future_expenses",[])
+    if fe_list:
+        story.append(Spacer(1,0.2*cm))
+        story.append(Paragraph("Planned Future Recurring Expenses", sH2))
+        fe_rows = [[fe.get("name","—"), f"\u20ac{fe.get('amount',0):,.0f}/mo",
+                    fe.get("start_ym","—"), fe.get("end_ym","ongoing"),
+                    f"{fe.get('growth',0)*100:.1f}%/yr"] for fe in fe_list]
+        story.append(dtbl(["Name","Amount","Start","End","Growth"],
+                          fe_rows, [W*0.35,W*0.18,W*0.15,W*0.17,W*0.15]))
+    story.append(PageBreak())
+
+    # ════════════════════════════════════════════════════════════════
+    # 5 — SCENARIO A/B (optional)
+    # ════════════════════════════════════════════════════════════════
+    _sec_n = 5
+    if ab_mode:
+        story.append(Paragraph(f"{_sec_n}  \u2014  Scenario A/B Comparison", sH1))
+        story.append(HR(1.0, BLUE))
+        sa_name = pa.get("scenario_label") or "Scenario A"
+        sb_name = pb.get("scenario_label") or "Scenario B"
+        fin_a = df_w_a.iloc[-1]; fin_b = df_w_b.iloc[-1]
+
+        # CHART: A vs B wealth
+        _ab_a = list(df_w_a["Total Wealth (Buy)"])
+        _ab_b = list(df_w_b["Total Wealth (Buy)"])
+        _ab_d = list(range(len(_ab_a)))
+        _ab_lbls = [d.strftime("%b %y") for d in df_w_a["Date"]]
+
+        def _draw_ab(fig, ax, **kw):
+            ax.plot(_ab_d, _ab_a, color=kw["BLUE"], lw=2.5, label=sa_name)
+            ax.plot(_ab_d, _ab_b, color=kw["AMBER"], lw=2.5, ls="--", label=sb_name)
+            step = max(1, len(_ab_d)//8)
+            ax.set_xticks(_ab_d[::step])
+            ax.set_xticklabels(_ab_lbls[::step], rotation=30, ha="right", fontsize=6.5)
+            ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x/1e3:.0f}k")
+            ax.legend(fontsize=7, framealpha=0.9)
+            ax.set_title(f"Total Wealth: {sa_name} vs {sb_name}", fontsize=9,
+                         fontweight="bold", color="#1e293b", pad=6)
+
+        story += embed(_draw_ab)
+
+        cmp_rows = [
+            ["End Wealth (Buy)",
+             f"\u20ac{fin_a['Total Wealth (Buy)']:,.0f}",
+             f"\u20ac{fin_b['Total Wealth (Buy)']:,.0f}",
+             f"\u20ac{fin_a['Total Wealth (Buy)']-fin_b['Total Wealth (Buy)']:,.0f}"],
+            ["End Wealth (Rent)",
+             f"\u20ac{fin_a['Total Wealth (Rent)']:,.0f}",
+             f"\u20ac{fin_b['Total Wealth (Rent)']:,.0f}",
+             f"\u20ac{fin_a['Total Wealth (Rent)']-fin_b['Total Wealth (Rent)']:,.0f}"],
+            ["Home Equity",
+             f"\u20ac{fin_a['Home Equity']:,.0f}",
+             f"\u20ac{fin_b['Home Equity']:,.0f}",
+             f"\u20ac{fin_a['Home Equity']-fin_b['Home Equity']:,.0f}"],
+            ["Avg Net Income/mo",
+             f"\u20ac{df_m_a['Total Net'].mean():,.0f}",
+             f"\u20ac{df_m_b['Total Net'].mean():,.0f}",
+             f"\u20ac{df_m_a['Total Net'].mean()-df_m_b['Total Net'].mean():,.0f}"],
+            ["Avg Savings/mo",
+             f"\u20ac{df_m_a['Net Saving'].mean():,.0f}",
+             f"\u20ac{df_m_b['Net Saving'].mean():,.0f}",
+             f"\u20ac{df_m_a['Net Saving'].mean()-df_m_b['Net Saving'].mean():,.0f}"],
+        ]
+        story.append(dtbl([" ", sa_name, sb_name, "Difference"],
+                          cmp_rows, [W*0.30,W*0.23,W*0.23,W*0.24]))
+        story.append(PageBreak())
+        _sec_n = 6
+
+    # ════════════════════════════════════════════════════════════════
+    # RETIREMENT SECTION
+    # ════════════════════════════════════════════════════════════════
+    story.append(Paragraph(f"{_sec_n}  \u2014  Retirement Planning", sH1))
+    story.append(HR(1.0, BLUE))
+    _sec_n += 1
+
+    story.append(kpi_row([
+        ("Pension Gap / mo",        f"\u20ac{pension_gap_r:,.0f}",    RED),
+        ("Capital Needed",          f"\u20ac{capital_needed_r:,.0f}", BLUE),
+        ("FIRE Number",             f"\u20ac{fire_r:,.0f}",           AMBER),
+        ("Projected Capital at Ret",f"\u20ac{proj_cap_ret:,.0f}",
+         GREEN if proj_cap_ret >= capital_needed_r else RED),
+    ]))
+    story.append(Spacer(1,0.2*cm))
+    _surplus = proj_cap_ret - capital_needed_r
+    if _surplus >= 0:
+        story.append(Paragraph(
+            f"\u2705  Projected capital exceeds the capital needed by \u20ac{_surplus:,.0f}. "
+            f"Your retirement plan looks on track.", sOK))
+    else:
+        story.append(Paragraph(
+            f"\u26a0\ufe0f  Shortfall of \u20ac{abs(_surplus):,.0f} at retirement age {ret_age_r}. "
+            f"Consider increasing savings, adjusting retirement age, or reducing target income.", sWRN))
+
+    # CHART A: Portfolio growth to retirement
+    def _draw_grow(fig, ax, **kw):
+        ax.fill_between(range(len(_port_curve)), _port_curve,
+                        alpha=0.1, color=kw["BLUE"])
+        ax.plot(range(len(_port_curve)), _port_curve,
+                color=kw["BLUE"], lw=2.5, label="Projected Portfolio")
+        ax.axhline(capital_needed_r, color=kw["RED"], lw=1.5, ls="--",
+                   label=f"Capital Needed  \u20ac{capital_needed_r/1e3:.0f}k")
+        ax.axhline(fire_r, color=kw["AMBER"], lw=1.2, ls=":",
+                   label=f"FIRE Number  \u20ac{fire_r/1e3:.0f}k")
+        xticks = list(range(0, len(_port_curve), max(1, len(_port_curve)//8)))
+        ax.set_xticks(xticks)
+        ax.set_xticklabels([str(_port_years[i]) for i in xticks],
+                           rotation=30, ha="right", fontsize=6.5)
+        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x/1e3:.0f}k")
+        ax.legend(fontsize=7, framealpha=0.9)
+        ax.set_title("Portfolio Growth to Retirement", fontsize=9,
+                     fontweight="bold", color="#1e293b", pad=6)
+
+    story += embed(_draw_grow,
+                   "Blue = projected portfolio, red dashed = capital needed, amber dotted = FIRE number.")
+
+    # CHART B: income waterfall (bar chart)
+    _bar_labels = ["AOW (state)", "Occ. Pension", "Private Capital (SWR)", "Target"]
+    _bar_values = [ret_aow_r, ret_pension_r,
+                   proj_cap_ret * ret_swr_r / 12, ret_target]
+    _bar_colors_m = [TEAL.hexval(), BLUE.hexval(), GREEN.hexval(), RED.hexval()]
+
+    def _draw_waterfall(fig, ax, **kw):
+        bars = ax.bar(_bar_labels, _bar_values,
+                      color=[kw["TEAL"], kw["BLUE"], kw["GREEN"], kw["RED"]],
+                      width=0.55, zorder=3)
+        for bar, val in zip(bars, _bar_values):
+            ax.text(bar.get_x() + bar.get_width()/2,
+                    bar.get_height() + max(_bar_values)*0.02,
+                    f"\u20ac{val:,.0f}", ha="center", va="bottom",
+                    fontsize=7, color="#1e293b", fontweight="bold")
+        ax.set_ylabel("\u20ac / month", fontsize=7)
+        ax.set_title("Monthly Retirement Income Sources vs Target",
+                     fontsize=9, fontweight="bold", color="#1e293b", pad=6)
+        ax.set_ylim(0, max(_bar_values) * 1.2)
+        for tick in ax.get_xticklabels():
+            tick.set_fontsize(7)
+
+    story += embed(_draw_waterfall,
+                   "Teal = AOW, blue = occupational pension, green = private capital withdrawal, red = target.")
+
+    # CHART C: portfolio depletion
+    _dep_ages = [ret_age_r + y for y in range(len(_dep_curve_r))]
+
+    def _draw_depletion(fig, ax, **kw):
+        ax.fill_between(range(len(_dep_curve_r)), _dep_curve_r,
+                        alpha=0.1, color=kw["GREEN"])
+        ax.plot(range(len(_dep_curve_r)), _dep_curve_r,
+                color=kw["GREEN"], lw=2.5, label="Remaining Capital")
+        ax.axhline(0, color=kw["RED"], lw=1, ls="-")
+        xticks = list(range(0, len(_dep_curve_r), max(1, len(_dep_curve_r)//8)))
+        ax.set_xticks(xticks)
+        ax.set_xticklabels([str(_dep_ages[i]) for i in xticks],
+                           rotation=30, ha="right", fontsize=6.5)
+        ax.yaxis.set_major_formatter(lambda x, _: f"\u20ac{x/1e3:.0f}k")
+        ax.legend(fontsize=7, framealpha=0.9)
+        ax.set_title("Portfolio Depletion in Retirement (by Age)",
+                     fontsize=9, fontweight="bold", color="#1e293b", pad=6)
+
+    story += embed(_draw_depletion,
+                   "Shows how long your projected capital sustains the pension gap withdrawal.")
+
+    # Sensitivity table
+    story.append(Paragraph("Capital Needed \u2014 Sensitivity (Retirement Age \u00d7 Target Income)", sH2))
+    _ages_s   = [55, 60, 62, 65, 67, 70]
+    _incomes_s= [2000, 2500, 3000, 3500, 4000, 5000]
+    _stbl     = []
+    for _age in _ages_s:
+        _row = [f"Age {_age}"]
+        for _inc in _incomes_s:
+            _gap = max(_inc - pillar12_r, 0)
+            _cap = _gap * 12 / ret_swr_r if ret_swr_r > 0 else 0
+            _ok  = proj_cap_ret >= _cap
+            _cell = f"\u20ac{_cap/1e6:.2f}M" if _cap >= 1e6 else f"\u20ac{_cap:,.0f}"
+            _row.append(("\u2713 " if _ok else "! ") + _cell)
+        _stbl.append(_row)
+    _s_hdrs = [""] + [f"\u20ac{i:,}/mo" for i in _incomes_s]
+    _s_cw   = [W*0.14] + [W*0.143]*6
+    story.append(dtbl(_s_hdrs, _stbl, _s_cw))
+    story.append(Paragraph(
+        "\u2713 = your projected capital covers this combination.  "
+        "! = shortfall. Assumes current SWR and AOW + occupational pension as configured.", sCap))
+    story.append(PageBreak())
+
+    # ════════════════════════════════════════════════════════════════
+    # SETUP SUMMARY
+    # ════════════════════════════════════════════════════════════════
+    story.append(Paragraph(f"{_sec_n}  \u2014  Setup Summary", sH1))
+    story.append(HR(1.0, BLUE))
+    setup_rows = [
+        ["Your gross income",   f"\u20ac{p['inc_s']:,.0f}/yr"],
+        ["Partner income",      f"\u20ac{p['inc_p']:,.0f}/yr" if p["partner"] else "\u2014"],
+        ["30% Ruling (You)",    f"{'Yes' if p.get('ruling_s') else 'No'} \u2014 "
+                                f"{p.get('rs_s',p['rs'])}\u2013{p.get('re_s',p['re'])}"],
+        ["Salary growth",       f"{p.get('sal_growth',0)*100:.1f}%/yr"],
+        ["Current rent",        f"\u20ac{p['rent']:,.0f}/mo"],
+        ["House price",         f"\u20ac{p['house_price']:,.0f}"],
+        ["Down payment",        f"{p['dp']*100:.0f}%  (\u20ac{p['house_price']*p['dp']:,.0f})"],
+        ["Mortgage rate",       f"{p['mort_rate']*100:.2f}%"],
+        ["Mortgage type",       p.get("mort_type","Annuity")],
+        ["Purchase date",       f"{p['by']}-{p['bm']:02d}"],
+        ["Starting savings",    f"\u20ac{p.get('savings',0):,.0f}"],
+        ["House appreciation",  f"{p.get('ha',0.03)*100:.1f}%/yr"],
+        ["Investment return",   f"{p.get('ir',0.05)*100:.1f}%/yr"],
+        ["Projection horizon",  f"{p.get('n_years',5)} years"],
+        ["Current age",         str(ret_current_age)],
+        ["Retirement age",      str(ret_age_r)],
+        ["Target ret. income",  f"\u20ac{ret_target:,.0f}/mo"],
+        ["AOW expected",        f"\u20ac{ret_aow_r:,.0f}/mo"],
+        ["Occ. pension",        f"\u20ac{ret_pension_r:,.0f}/mo"],
+        ["Safe withdrawal rate",f"{ret_swr_r*100:.1f}%/yr"],
+        ["Pre-ret. return",     f"{ret_ret_pre*100:.1f}%/yr"],
+        ["Post-ret. return",    f"{ret_ret_post*100:.1f}%/yr"],
+    ]
+    story.append(dtbl(["Parameter","Value"], setup_rows, [W*0.52,W*0.48]))
+    story.append(Spacer(1,0.6*cm))
+    story.append(HR(0.3, RULE))
+    story.append(Paragraph(
+        "Generated by the Dutch Financial Dashboard (Pro Plan). "
+        "All figures are approximations. "
+        "This document does not constitute financial or tax advice. "
+        "Consult a belastingadviseur or certified financieel planner.",
+        sCap))
+
+    doc.build(story, onFirstPage=_on_page, onLaterPages=_on_page)
+    return buf.getvalue()
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TIER SYSTEM — Free vs Paid
+# ════════════════════════════════════════════════════════════════════════════════
+# Set IS_PAID = True to unlock all features.
+# In production replace this with your auth/payment check.
+
+IS_PAID: bool = True    # ← Pro tier — all features unlocked
+
+def _pro_chart_overlay(section_label: str = "Pro Charts") -> None:
+    """Render a styled upgrade banner below greyed-out chart sections (free tier)."""
+    st.markdown(
+        f"<div style=\"background:linear-gradient(135deg,rgba(26,26,46,0.96),rgba(22,33,62,0.98));"
+        f"border:2px solid #f1c40f88;border-radius:12px;"
+        f"padding:24px 32px;margin:14px 0;text-align:center;"
+        f"box-shadow:0 4px 28px rgba(0,0,0,0.55);\">"
+        f"<div style=\"font-size:30px;margin-bottom:8px\">🔒</div>"
+        f"<div style=\"font-size:18px;font-weight:700;color:#f1c40f;margin-bottom:8px\">"
+        f"Upgrade to Pro to unlock {section_label}</div>"
+        f"<div style=\"color:#ccc;font-size:13px;line-height:1.8;margin-bottom:16px\">"
+        f"The charts above are a <b>preview</b> of what you'll unlock with a "
+        f"<b style=\"color:#f1c40f\">Pro</b> plan. Get full projections, scenario comparison, "
+        f"actuals tracking, mortgage analysis, data export, and more."
+        f"</div>"
+        f"<span style=\"background:#f1c40f;color:#000;font-weight:700;"
+        f"padding:9px 26px;border-radius:8px;font-size:14px\">⭐ Upgrade to Pro</span>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+
+def _paid_gate(label: str = "Pro feature", icon: str = "🔒", compact: bool = False) -> None:
+    """Render a locked-feature callout for free-tier users."""
+    if compact:
+        st.markdown(
+            f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);"
+            f"border:1px solid #f1c40f44;border-radius:8px;"
+            f"padding:10px 14px;margin:4px 0;opacity:0.92'>"
+            f"<span style='font-size:15px'>{icon}</span> "
+            f"<b style='color:#f1c40f'>{label}</b> "
+            f"<span style='color:#aaa;font-size:12px'>— <b>Pro</b> plan only</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);"
+            f"border:1.5px solid #f1c40f88;border-radius:10px;"
+            f"padding:18px 22px;margin:10px 0'>"
+            f"<div style='font-size:22px;margin-bottom:6px'>{icon} "
+            f"<b style='color:#f1c40f'>{label}</b></div>"
+            f"<div style='color:#ccc;font-size:14px;line-height:1.7'>"
+            f"This feature is included in the <b style='color:#f1c40f'>Pro plan</b>. "
+            f"Upgrade to unlock full projections, actuals tracking, scenario comparison, "
+            f"future expense planning, childcare subsidy calculator, and data export."
+            f"</div>"
+            f"<div style='margin-top:12px'>"
+            f"<span style='background:#f1c40f;color:#000;font-weight:700;"
+            f"padding:6px 16px;border-radius:6px;font-size:13px'>⭐ Upgrade to Pro</span>"
+            f"</div></div>",
+            unsafe_allow_html=True
+        )
+
+
 # ── No server-side file storage — all persistence is via download/upload ─────────
 # Each browser session is independent; multiple users can run simultaneously.
 
@@ -50,6 +976,11 @@ DEFAULTS = dict(
     # Net worth
     net_worth_start=0,
     scenario_label="",
+    # Retirement
+    ret_age=67, ret_target_income=3500, ret_aow=1450,
+    ret_pension=500, ret_return_pre=0.07, ret_return_post=0.04,
+    ret_inflation=0.025, ret_swr=0.035,
+    ret_current_age=32,
 )
 
 # ── Settings serialisation helpers ───────────────────────────────────────────────
@@ -209,40 +1140,190 @@ st.set_page_config(
 # ── Mobile CSS injection ─────────────────────────────────────────────────────────
 def _inject_mobile_css(narrow: bool) -> None:
     """Inject CSS that adapts layout to narrow/mobile screens."""
-    max_w = "480px" if narrow else "100%"
-    font_scale = "13px" if narrow else "inherit"
-    metric_font = "0.85rem" if narrow else "inherit"
-    st.markdown(f"""
+    # Always inject base styles
+    st.markdown("""
 <style>
-/* ── Mobile / narrow mode ──────────────────────── */
-.block-container {{
-    max-width: {max_w};
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-}}
-/* Scale down metric labels on narrow */
-[data-testid="stMetricLabel"] {{ font-size: {metric_font}; }}
-[data-testid="stMetricValue"] {{ font-size: {metric_font}; }}
-/* Compact tab labels on narrow */
-{"button[data-baseweb='tab'] { padding: 4px 6px !important; font-size: 11px !important; }" if narrow else ""}
-/* Keep plotly charts from overflowing */
-.js-plotly-plot {{ max-width: 100% !important; }}
-/* Prevent wide tables from breaking layout */
-[data-testid="stDataFrame"] {{ overflow-x: auto; }}
-/* General font scale */
-.main .block-container * {{ font-size: {font_scale}; }}
+.js-plotly-plot { max-width: 100% !important; }
+[data-testid="stDataFrame"] { overflow-x: auto; }
+</style>
+""", unsafe_allow_html=True)
+
+    if not narrow:
+        return
+
+    st.markdown("""
+<style>
+/* ── Narrow / mobile layout ─────────────────────────────────────── */
+.block-container {
+    max-width: 100% !important;
+    padding-left: 0.4rem !important;
+    padding-right: 0.4rem !important;
+    padding-top: 0.5rem !important;
+}
+
+/* Base font — readable on small screens */
+.main .block-container { font-size: 15px !important; }
+p, li { font-size: 15px !important; line-height: 1.6 !important; }
+h1 { font-size: 20px !important; }
+h2 { font-size: 17px !important; }
+h3 { font-size: 15px !important; }
+label { font-size: 14px !important; line-height: 1.5 !important; }
+
+/* Metric tiles — readable values, compact labels */
+[data-testid="stMetricLabel"]  { font-size: 11px !important; line-height: 1.3 !important; }
+[data-testid="stMetricValue"]  { font-size: 19px !important; font-weight: 700 !important; }
+[data-testid="stMetricDelta"]  { font-size: 11px !important; }
+
+/* Tab bar — touch-friendly, text legible */
+button[data-baseweb="tab"] {
+    padding: 8px 4px !important;
+    font-size: 10px !important;
+    min-height: 48px !important;
+    line-height: 1.2 !important;
+}
+
+/* All buttons — 48px minimum tap target */
+.stButton > button,
+button[kind="primary"],
+button[kind="secondary"] {
+    min-height: 48px !important;
+    font-size: 15px !important;
+    border-radius: 10px !important;
+    padding: 10px 14px !important;
+    width: 100% !important;
+}
+
+/* Number inputs — large enough to tap without zooming */
+[data-testid="stNumberInput"] input {
+    font-size: 16px !important;
+    min-height: 48px !important;
+    padding: 8px 10px !important;
+    -webkit-appearance: none;
+}
+[data-testid="stNumberInput"] button {
+    min-width: 40px !important;
+    min-height: 48px !important;
+    font-size: 18px !important;
+}
+
+/* Text inputs */
+[data-testid="stTextInput"] input {
+    font-size: 16px !important;
+    min-height: 48px !important;
+    padding: 8px 10px !important;
+}
+
+/* Select boxes */
+[data-testid="stSelectbox"] > div > div {
+    font-size: 15px !important;
+    min-height: 48px !important;
+}
+
+/* Sliders — bigger thumb, more padding for finger */
+[data-testid="stSlider"] {
+    padding-top: 6px !important;
+    padding-bottom: 10px !important;
+}
+[data-testid="stSlider"] [role="slider"] {
+    width: 28px !important;
+    height: 28px !important;
+}
+[data-testid="stSlider"] [data-testid="stTickBarMin"],
+[data-testid="stSlider"] [data-testid="stTickBarMax"] {
+    font-size: 12px !important;
+}
+
+/* Expander headers — big tap targets */
+[data-testid="stExpander"] summary {
+    font-size: 14px !important;
+    padding: 12px 8px !important;
+    min-height: 52px !important;
+    line-height: 1.4 !important;
+}
+
+/* Checkbox + radio — bigger hit areas */
+[data-testid="stCheckbox"] label {
+    font-size: 15px !important;
+    min-height: 44px !important;
+    padding: 6px 0 !important;
+    display: flex !important;
+    align-items: center !important;
+}
+[data-testid="stRadio"] label {
+    font-size: 15px !important;
+    min-height: 44px !important;
+    padding: 6px 0 !important;
+}
+[data-testid="stCheckbox"] input[type="checkbox"],
+[data-testid="stRadio"]    input[type="radio"] {
+    width: 22px !important;
+    height: 22px !important;
+    margin-right: 8px !important;
+}
+
+/* Toggle */
+[data-testid="stToggle"] label {
+    font-size: 15px !important;
+    min-height: 44px !important;
+}
+[data-testid="stToggle"] [role="switch"] {
+    width: 52px !important;
+    height: 28px !important;
+}
+
+/* Caption and small text */
+.stCaption, small { font-size: 13px !important; line-height: 1.5 !important; }
+
+/* Download / upload buttons */
+[data-testid="stDownloadButton"] > button {
+    min-height: 52px !important;
+    font-size: 15px !important;
+    width: 100% !important;
+}
+[data-testid="stFileUploader"] {
+    font-size: 14px !important;
+}
+
+/* Info / warning / success boxes */
+[data-testid="stAlert"] { font-size: 14px !important; padding: 10px !important; }
+
+/* Dividers */
+hr { margin: 0.5rem 0 !important; }
+
+/* Plotly charts — never overflow */
+.js-plotly-plot .plotly { overflow: hidden !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ── Theme ────────────────────────────────────────────────────────────────────────
-DARK     = dict(plot_bgcolor="#0f1117", paper_bgcolor="#0f1117", font=dict(color="#e0e0e0"))
-LEGEND_H = dict(orientation="h", y=-0.20, font=dict(size=11))
+DARK = dict(plot_bgcolor="#0f1117", paper_bgcolor="#0f1117", font=dict(color="#e0e0e0"))
 
 def chart_layout(title, yaxis_title="€", height=400, xaxis_title="", **kw):
-    return dict(title=dict(text=title, font=dict(size=15)),
-                xaxis_title=xaxis_title, yaxis_title=yaxis_title,
-                legend=LEGEND_H, hovermode="x unified",
-                height=height, **DARK, **kw)
+    """Return a Plotly layout dict, adapted for narrow/mobile when needed."""
+    _is_narrow = st.session_state.get("narrow_mode", False)
+    _height    = 240 if _is_narrow else height
+    _title_sz  = 11  if _is_narrow else 15
+    _legend    = dict(
+        orientation="h",
+        y=-0.32 if _is_narrow else -0.20,
+        x=0, xanchor="left",
+        font=dict(size=10 if _is_narrow else 11),
+        bgcolor="rgba(0,0,0,0)",
+        itemclick="toggleothers",
+        itemsizing="constant",
+    )
+    return dict(
+        title=dict(text=title, font=dict(size=_title_sz)),
+        xaxis_title=xaxis_title,
+        yaxis_title="" if _is_narrow else yaxis_title,
+        xaxis=dict(tickfont=dict(size=10 if _is_narrow else 12)),
+        yaxis=dict(tickfont=dict(size=10 if _is_narrow else 12)),
+        legend=_legend,
+        hovermode="x unified",
+        height=_height,
+        margin=dict(l=30, r=8, t=32, b=110) if _is_narrow else dict(t=50, b=80),
+        **DARK, **kw
+    )
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAX ENGINE
@@ -617,6 +1698,7 @@ def get_sell_summary(dw):
 
 def add_events(fig, p, label="", buy_y=0.88, sell_y=0.75, buy_color="#8e44ad", sell_color="#e74c3c"):
     """Add buy-date and sell-date markers.  label="" for single-scenario, "A"/"B" for A/B charts."""
+    _is_narrow = st.session_state.get("narrow_mode", False)
     n_months = p.get("n_years", 5) * 12
     months   = pd.date_range(start="2026-01-01", periods=n_months, freq="MS")
     # 30% ruling band — only draw once (when label is "" or "A")
@@ -628,23 +1710,26 @@ def add_events(fig, p, label="", buy_y=0.88, sell_y=0.75, buy_color="#8e44ad", s
                           x0=rm[0].strftime("%Y-%m-%d"), x1=rm[-1].strftime("%Y-%m-%d"),
                           y0=0, y1=1, xref="x", yref="paper",
                           fillcolor="rgba(241,196,15,0.08)", line_width=0)
-            fig.add_annotation(x=rm[0].strftime("%Y-%m-%d"), y=0.97, xref="x", yref="paper",
-                               text="30% ruling", showarrow=False, xanchor="left",
-                               font=dict(color="#d4a017", size=10))
+            if not _is_narrow:
+                fig.add_annotation(x=rm[0].strftime("%Y-%m-%d"), y=0.97, xref="x", yref="paper",
+                                   text="30% ruling", showarrow=False, xanchor="left",
+                                   font=dict(color="#d4a017", size=10))
     prefix = f" {label}" if label else ""
     buy_str = pd.Timestamp(year=p["by"], month=p["bm"], day=1).strftime("%Y-%m-%d")
     fig.add_shape(type="line", x0=buy_str, x1=buy_str, y0=0, y1=1,
                   xref="x", yref="paper", line=dict(dash="dash", color=buy_color, width=1.5))
-    fig.add_annotation(x=buy_str, y=buy_y, xref="x", yref="paper",
-                       text=f"🏠{prefix}", showarrow=False, xanchor="left",
-                       font=dict(color=buy_color, size=12))
+    if not _is_narrow:
+        fig.add_annotation(x=buy_str, y=buy_y, xref="x", yref="paper",
+                           text=f"🏠{prefix}", showarrow=False, xanchor="left",
+                           font=dict(color=buy_color, size=12))
     if p.get("sell_house", False):
         sell_str = pd.Timestamp(year=p.get("sy",2031), month=p.get("sm",1), day=1).strftime("%Y-%m-%d")
         fig.add_shape(type="line", x0=sell_str, x1=sell_str, y0=0, y1=1,
                       xref="x", yref="paper", line=dict(dash="dot", color=sell_color, width=1.5))
-        fig.add_annotation(x=sell_str, y=sell_y, xref="x", yref="paper",
-                           text=f"🏷️ Sell{prefix}", showarrow=False, xanchor="left",
-                           font=dict(color=sell_color, size=10))
+        if not _is_narrow:
+            fig.add_annotation(x=sell_str, y=sell_y, xref="x", yref="paper",
+                               text=f"🏷️ Sell{prefix}", showarrow=False, xanchor="left",
+                               font=dict(color=sell_color, size=10))
 
 def kpi(col, label, val, delta=None):
     col.metric(label, f"€{val:,.0f}", delta=delta)
@@ -674,6 +1759,46 @@ with st.sidebar:
     st.markdown("## 🇳🇱 Dutch Dashboard")
     st.divider()
 
+    # ── Tier badge ────────────────────────────────────────────────────────────
+    if IS_PAID:
+        st.markdown(
+            "<div style='background:#1d4ed8;border-radius:10px;"
+            "padding:12px 14px;margin-bottom:2px'>"
+            "<div style='color:#fbbf24;font-weight:800;font-size:14px;"
+            "margin-bottom:6px'>⭐ Pro Plan</div>"
+            "<div style='color:#e0e7ff;font-size:11.5px;line-height:1.75'>"
+            "✓ Full income &amp; tax projections<br>"
+            "✓ Buy vs Rent wealth model<br>"
+            "✓ Mortgage analysis (annuity/linear)<br>"
+            "✓ Scenario A/B comparison<br>"
+            "✓ Actuals vs forecast tracking<br>"
+            "✓ Excel &amp; PDF export<br>"
+            "✓ Retirement planning &amp; FIRE analysis<br>"
+            "✓ Settings save &amp; restore"
+            "</div></div>",
+            unsafe_allow_html=True)
+    else:
+        st.markdown(
+            "<div style='background:#1e293b;border:1px solid #334155;"
+            "border-radius:10px;padding:12px 14px'>"
+            "<div style='color:#f1c40f;font-weight:700;font-size:13px;"
+            "margin-bottom:6px'>Free Plan</div>"
+            "<div style='color:#64748b;font-size:11px;line-height:1.75'>"
+            "✓ Income &amp; Tax (preview)<br>"
+            "✓ Buy vs Rent (preview)<br>"
+            "🔒 Mortgage Analysis<br>"
+            "🔒 Scenario A/B<br>"
+            "🔒 Actuals Tracking<br>"
+            "🔒 Excel &amp; PDF Export<br>"
+            "🔒 Settings Save &amp; Restore"
+            "</div>"
+            "<div style='margin-top:10px'>"
+            "<span style='background:#f1c40f;color:#000;font-weight:700;"
+            "padding:5px 14px;border-radius:5px;font-size:11px'>⭐ Upgrade to Pro</span>"
+            "</div></div>",
+            unsafe_allow_html=True)
+    st.divider()
+
     # ── Mobile / narrow display toggle ───────────────────────────────────────
     st.markdown("### 📱 Display")
     _narrow = st.toggle(
@@ -698,7 +1823,8 @@ with st.sidebar:
         "🏦 **Mortgage** — annuity vs linear analysis\n\n"
         "🔀 **Scenario A/B** — compare two scenarios\n\n"
         "📝 **Actuals** — enter real income & savings\n\n"
-        "📋 **Data & Export** — raw tables & Excel download"
+        "📋 **Data & Export** — raw tables & Excel download\n\n"
+        "🏖️ **Retirement** — pension gap, FIRE number & capital planning"
     )
     st.divider()
     st.markdown("### 💾 Your data")
@@ -736,7 +1862,7 @@ saved_A, saved_B = load_settings()
 
 tabs = st.tabs(["⚙️ Setup", "📊 Income & Tax", "🏠 Buy vs Rent",
                 "🏦 Mortgage", "🔀 Scenario A/B",
-                "📝 Actuals", "📋 Data & Export"])
+                "📝 Actuals", "📋 Data & Export", "🏖️ Retirement"])
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 0 — SETUP
@@ -744,8 +1870,12 @@ tabs = st.tabs(["⚙️ Setup", "📊 Income & Tax", "🏠 Buy vs Rent",
 
 with tabs[0]:
     st.subheader("⚙️ Scenario Setup")
-    ab_mode = st.toggle("🔀 Enable Scenario B — compare two scenarios side-by-side",
-                        value=bool(saved_A.get("ab_mode", False)), key="ab_mode_toggle")
+    if IS_PAID:
+        ab_mode = st.toggle("🔀 Enable Scenario B — compare two scenarios side-by-side",
+                            value=bool(saved_A.get("ab_mode", False)), key="ab_mode_toggle")
+    else:
+        ab_mode = False
+        _paid_gate("Scenario A/B Comparison", icon="🔀", compact=True)
     with st.expander("ℹ️ How do these inputs flow through the dashboard?", expanded=False):
         st.markdown("""
 Configure all inputs for your financial scenarios here. Every value you set flows through to **all other tabs**:
@@ -931,7 +2061,7 @@ The dashboard automatically applies the correct rate for each year based on your
             with st.expander(_lbl_housing, expanded=False):
 
                 rent = st.number_input("Current rent (€/mo)",
-                    value=sv.get("rent", 1850), step=50, key=f"rent_{lbl}",
+                    value=sv.get("rent", 1850), step=50, min_value=0, key=f"rent_{lbl}",
                     help="Monthly rent before buying, and the ongoing cost in the Rent scenario throughout. Include service costs.")
 
                 st.markdown("**📆 Purchase date**")
@@ -990,28 +2120,51 @@ The dashboard automatically applies the correct rate for each year based on your
                 def _en_get(key):
                     return str(en.get(key, "")) if isinstance(en, dict) else ""
 
-                # ── Column header row ──────────────────────────────────────────
-                # 4 columns: Category name | €/mo input | %/yr input | Note
+                # ── Column header + expense rows — desktop 4-col, mobile stacked ──
                 _COLS = [2.6, 0.85, 0.85, 2.3]
-                _hc = st.columns(_COLS)
-                _hc[0].markdown("**Category**")
-                _hc[1].markdown("**€ /mo**")
-                _hc[2].markdown("**% /yr**")
-                _hc[3].markdown("**Note**")
+
+                if not _narrow:
+                    # Desktop: single aligned header row above all inputs
+                    _hc = st.columns(_COLS)
+                    _hc[0].markdown("**Category**")
+                    _hc[1].markdown("**€ /mo**")
+                    _hc[2].markdown("**% /yr**")
+                    _hc[3].markdown("**Note**")
 
                 def _exp_row(label, key, val, step, growth_default, growth_help, note_placeholder=""):
-                    """Render one aligned expense row: label | €/mo | %/yr | note"""
-                    rc = st.columns(_COLS)
-                    rc[0].markdown(f"<div style='padding-top:8px'>{label}</div>", unsafe_allow_html=True)
-                    amount = rc[1].number_input("€", value=float(val), step=float(step),
-                        key=f"{key}_{lbl}", label_visibility="collapsed")
-                    growth = rc[2].number_input("%", value=round(_eg_get(key, growth_default)*100, 1),
-                        step=0.5, key=f"{key}_g_{lbl}",
-                        help=growth_help, label_visibility="collapsed") / 100
-                    note = rc[3].text_input("n", value=_en_get(key),
-                        key=f"{key}_note_{lbl}",
-                        placeholder=note_placeholder,
-                        label_visibility="collapsed")
+                    """Render one expense row. Desktop: 4-col aligned. Mobile: labelled block."""
+                    if _narrow:
+                        # Mobile: category name as section label, then 3 inputs in a row
+                        st.markdown(
+                            f"<div style='font-size:13px;font-weight:600;color:#ccc;"
+                            f"margin-top:10px;margin-bottom:2px;border-bottom:1px solid #333;"
+                            f"padding-bottom:3px'>{label}</div>",
+                            unsafe_allow_html=True
+                        )
+                        mc1, mc2, mc3 = st.columns([1.2, 1, 1.8])
+                        mc1.markdown("<div style='font-size:11px;color:#888;margin-bottom:2px'>€ /mo</div>", unsafe_allow_html=True)
+                        amount = mc1.number_input("€", value=float(val), step=float(step),
+                            min_value=0.0, key=f"{key}_{lbl}", label_visibility="collapsed")
+                        mc2.markdown("<div style='font-size:11px;color:#888;margin-bottom:2px'>% /yr</div>", unsafe_allow_html=True)
+                        growth = mc2.number_input("%", value=round(_eg_get(key, growth_default)*100, 1),
+                            step=0.5, key=f"{key}_g_{lbl}",
+                            help=growth_help, label_visibility="collapsed") / 100
+                        mc3.markdown("<div style='font-size:11px;color:#888;margin-bottom:2px'>Note</div>", unsafe_allow_html=True)
+                        note = mc3.text_input("n", value=_en_get(key),
+                            key=f"{key}_note_{lbl}", placeholder=note_placeholder,
+                            label_visibility="collapsed")
+                    else:
+                        # Desktop: 4-column row aligned under the headers
+                        rc = st.columns(_COLS)
+                        rc[0].markdown(f"<div style='padding-top:8px'>{label}</div>", unsafe_allow_html=True)
+                        amount = rc[1].number_input("€", value=float(val), step=float(step),
+                            min_value=0.0, key=f"{key}_{lbl}", label_visibility="collapsed")
+                        growth = rc[2].number_input("%", value=round(_eg_get(key, growth_default)*100, 1),
+                            step=0.5, key=f"{key}_g_{lbl}",
+                            help=growth_help, label_visibility="collapsed") / 100
+                        note = rc[3].text_input("n", value=_en_get(key),
+                            key=f"{key}_note_{lbl}", placeholder=note_placeholder,
+                            label_visibility="collapsed")
                     return amount, growth, note
 
                 st.markdown("*💊 Health & Wellbeing*")
@@ -1131,7 +2284,8 @@ The dashboard automatically applies the correct rate for each year based on your
                 ha = w3.slider("House appreciation (%/yr)", 0.0, 8.0, sv.get("ha", 0.03) * 100, 0.5,
                     key=f"ha_{lbl}",
                     help="Annual house price growth. Long-run Dutch average ~2–4%; recent years 5–8%.") / 100
-                ir = w4.slider("Investment return (%/yr)", 0.0, 10.0, sv.get("ir", 0.05) * 100, 0.5,
+                ir = w4.number_input("Investment return (%/yr)", value=round(sv.get("ir", 0.05) * 100, 1),
+                    min_value=0.0, max_value=25.0, step=0.5,
                     key=f"ir_{lbl}",
                     help="Annual return on savings/investments. Global index ETF historically ~7–9%/yr pre-tax.") / 100
                 w5, w6 = st.columns(2)
@@ -1140,144 +2294,163 @@ The dashboard automatically applies the correct rate for each year based on your
                     key=f"gi_{lbl}",
                     help="Sets a minimum annual growth rate for ALL expense categories. Any category with a lower per-item rate will be raised to this floor. "
                          "0% = use per-category rates only. 2.5% = Dutch CPI baseline.") / 100
-                net_worth_start = w6.number_input("Starting net worth (€)",
-                    value=sv.get("net_worth_start", 0), step=5000, key=f"nws_{lbl}",
-                    help="Your total net worth at Jan 2026, including savings, investments, pension value, etc. Used to track actual net worth over time in the 📝 Actuals tab.")
+                if IS_PAID:
+                    net_worth_start = w6.number_input("Starting net worth (€)",
+                        value=sv.get("net_worth_start", 0), step=5000, key=f"nws_{lbl}",
+                        help="Your total net worth at Jan 2026, including savings, investments, pension value, etc. Used to track actual net worth over time in the 📝 Actuals tab.")
+                else:
+                    net_worth_start = 0
+                    w6.markdown(
+                        "<div style='background:#1a1a2e;border:1px solid #f1c40f44;"
+                        "border-radius:6px;padding:8px;font-size:12px;color:#aaa'>"
+                        "🔒 <b style='color:#f1c40f'>Net worth tracker</b> — Pro only</div>",
+                        unsafe_allow_html=True)
 
             # ════════════════════════════════════════════════════════════════
-            # 6 — FUTURE RECURRING EXPENSES
+            # 6 — FUTURE RECURRING EXPENSES  (paid)
             # ════════════════════════════════════════════════════════════════
-            with st.expander(_lbl_future, expanded=False):
-                st.caption(
-                    "Add costs that don't exist yet but will start on a future date — "
-                    "baby/childcare, school fees, a second car, etc. "
-                    "Each is added to Fixed Expenses from its start month, compounding at its own growth rate."
-                )
-                fe_key = f"future_exp_list_{lbl}"
-                if fe_key not in st.session_state:
-                    st.session_state[fe_key] = [
-                        dict(name=x["name"], amount=x["amount"],
-                             start_ym=x["start_ym"], growth=x.get("growth", 0.02),
-                             end_ym=x.get("end_ym", ""))
-                        for x in sv.get("future_expenses", [])
-                    ]
-                fe_list = st.session_state[fe_key]
+            with st.expander(_lbl_future + (" 🔒" if not IS_PAID else ""), expanded=False):
+                if not IS_PAID:
+                    _paid_gate("Future Recurring Expenses", icon="🍼")
+                    st.caption(
+                        "Plan upcoming costs like childcare, school fees, or a second car. "
+                        "Each is added to your monthly expenses from its start date, compounding at its own growth rate."
+                    )
+                    future_expenses = sv.get("future_expenses", [])
+                else:
+                    fe_key = f"future_exp_list_{lbl}"
+                    if fe_key not in st.session_state:
+                        st.session_state[fe_key] = [
+                            dict(name=x["name"], amount=x["amount"],
+                                 start_ym=x["start_ym"], growth=x.get("growth", 0.02),
+                                 end_ym=x.get("end_ym", ""))
+                            for x in sv.get("future_expenses", [])
+                        ]
+                    fe_list = st.session_state[fe_key]
 
-                to_delete = None
-                if fe_list:
-                    fh1, fh2, fh3, fh4, fh5, fh6 = st.columns([2.4, 1.2, 1.4, 1.4, 1.2, 0.6])
-                    fh1.markdown("**Name**"); fh2.markdown("**€/mo**")
-                    fh3.markdown("**Starts**"); fh4.markdown("**%/yr**")
-                    fh5.markdown("**Ends**"); fh6.markdown("**Del**")
-                    for i, fe in enumerate(fe_list):
-                        fc1, fc2, fc3, fc4, fc5, fc6 = st.columns([2.4, 1.2, 1.4, 1.4, 1.2, 0.6])
-                        new_name   = fc1.text_input("_", value=fe["name"], key=f"fe_name_{lbl}_{i}", label_visibility="collapsed")
-                        new_amt    = fc2.number_input("_", value=float(fe["amount"]), step=25.0, min_value=0.0, key=f"fe_amt_{lbl}_{i}", label_visibility="collapsed")
-                        new_ym     = fc3.text_input("_", value=fe["start_ym"], key=f"fe_ym_{lbl}_{i}", placeholder="2027-06", label_visibility="collapsed", help="Start month — format: YYYY-MM")
-                        new_gr     = fc4.number_input("_", value=round(fe.get("growth", 0.02)*100, 1), step=0.5, min_value=0.0, max_value=20.0, key=f"fe_gr_{lbl}_{i}", label_visibility="collapsed",
-                            help="💡 Baby/childcare: 3–5%/yr. School fees: 3–6%/yr. General inflation: 2–3%/yr.") / 100
-                        new_end_ym = fc5.text_input("_", value=fe.get("end_ym", ""), key=f"fe_end_{lbl}_{i}", placeholder="2032-06 or blank", label_visibility="collapsed",
-                            help="End month (inclusive) — leave blank to run indefinitely. Format: YYYY-MM")
-                        if fc6.button("✕", key=f"fe_del_{lbl}_{i}", help="Remove"):
-                            to_delete = i
-                        fe_list[i] = dict(name=new_name, amount=new_amt, start_ym=new_ym, growth=new_gr, end_ym=new_end_ym)
+                    to_delete = None
+                    if fe_list:
+                        fh1, fh2, fh3, fh4, fh5, fh6 = st.columns([2.4, 1.2, 1.4, 1.4, 1.2, 0.6])
+                        fh1.markdown("**Name**"); fh2.markdown("**€/mo**")
+                        fh3.markdown("**Starts**"); fh4.markdown("**%/yr**")
+                        fh5.markdown("**Ends**"); fh6.markdown("**Del**")
+                        for i, fe in enumerate(fe_list):
+                            fc1, fc2, fc3, fc4, fc5, fc6 = st.columns([2.4, 1.2, 1.4, 1.4, 1.2, 0.6])
+                            new_name   = fc1.text_input("_", value=fe["name"], key=f"fe_name_{lbl}_{i}", label_visibility="collapsed")
+                            new_amt    = fc2.number_input("_", value=float(fe["amount"]), step=25.0, min_value=0.0, key=f"fe_amt_{lbl}_{i}", label_visibility="collapsed")
+                            new_ym     = fc3.text_input("_", value=fe["start_ym"], key=f"fe_ym_{lbl}_{i}", placeholder="2027-06", label_visibility="collapsed", help="Start month — format: YYYY-MM")
+                            new_gr     = fc4.number_input("_", value=round(fe.get("growth", 0.02)*100, 1), step=0.5, min_value=0.0, max_value=20.0, key=f"fe_gr_{lbl}_{i}", label_visibility="collapsed",
+                                help="💡 Baby/childcare: 3–5%/yr. School fees: 3–6%/yr. General inflation: 2–3%/yr.") / 100
+                            new_end_ym = fc5.text_input("_", value=fe.get("end_ym", ""), key=f"fe_end_{lbl}_{i}", placeholder="2032-06 or blank", label_visibility="collapsed",
+                                help="End month (inclusive) — leave blank to run indefinitely. Format: YYYY-MM")
+                            if fc6.button("✕", key=f"fe_del_{lbl}_{i}", help="Remove"):
+                                to_delete = i
+                            fe_list[i] = dict(name=new_name, amount=new_amt, start_ym=new_ym, growth=new_gr, end_ym=new_end_ym)
 
-                if to_delete is not None:
-                    fe_list.pop(to_delete)
-                    st.rerun()
+                    if to_delete is not None:
+                        fe_list.pop(to_delete)
+                        st.rerun()
 
-                if st.button("➕ Add future expense", key=f"fe_add_{lbl}"):
-                    _ny = sv.get("n_years", 5)
-                    fe_list.append(dict(
-                        name="New expense", amount=200.0,
-                        start_ym=f"{2026 + max(1, _ny // 2)}-01", growth=0.02, end_ym="",
-                    ))
-                    st.rerun()
+                    if st.button("➕ Add future expense", key=f"fe_add_{lbl}"):
+                        _ny = sv.get("n_years", 5)
+                        fe_list.append(dict(
+                            name="New expense", amount=200.0,
+                            start_ym=f"{2026 + max(1, _ny // 2)}-01", growth=0.02, end_ym="",
+                        ))
+                        st.rerun()
 
-                if fe_list:
-                    with st.expander("📊 Preview: monthly impact over time", expanded=False):
-                        _proj_months = pd.date_range(start="2026-01-01", periods=sv.get("n_years", 5) * 12, freq="MS")
-                        _fe_preview = []
-                        for _dt in _proj_months:
-                            _total = 0.0
-                            _dt_ym = f"{_dt.year}-{_dt.month:02d}"
-                            for _fe in fe_list:
-                                _fe_end_p = _fe.get("end_ym", "")
-                                if _dt_ym >= _fe.get("start_ym", "9999-99") and (not _fe_end_p or _dt_ym <= _fe_end_p):
-                                    _sy = int(_fe["start_ym"][:4]); _sm_fe = int(_fe["start_ym"][5:7])
-                                    _yf = (_dt.year - _sy) + (_dt.month - _sm_fe) / 12
-                                    _total += _fe["amount"] * (1 + _fe.get("growth", 0.0)) ** max(_yf, 0)
-                            _fe_preview.append({"Month": _dt_ym, "Total future expenses (€)": round(_total)})
-                        _fe_df = pd.DataFrame(_fe_preview)
-                        if _fe_df["Total future expenses (€)"].gt(0).any():
-                            _fig_fe = go.Figure()
-                            _fig_fe.add_trace(go.Scatter(
-                                x=pd.to_datetime(_fe_df["Month"] + "-01"),
-                                y=_fe_df["Total future expenses (€)"],
-                                fill="tozeroy", fillcolor="rgba(231,76,60,0.15)",
-                                line=dict(color="#e74c3c", width=2), name="Future expenses/mo"
-                            ))
-                            seen_yms = set()
-                            for _fe in fe_list:
-                                if _fe["start_ym"] not in seen_yms:
-                                    seen_yms.add(_fe["start_ym"])
-                                    _xs = pd.Timestamp(_fe["start_ym"] + "-01").strftime("%Y-%m-%d")
-                                    _fig_fe.add_shape(type="line", x0=_xs, x1=_xs, y0=0, y1=1,
-                                        xref="x", yref="paper", line=dict(dash="dash", color="#f1c40f", width=1.5))
-                                    _fig_fe.add_annotation(x=_xs, y=0.95, xref="x", yref="paper",
-                                        text=_fe["name"], showarrow=False, xanchor="left",
-                                        font=dict(color="#f1c40f", size=10))
-                                # End marker (red dashed) if end_ym is set
-                                _fe_end_ym = _fe.get("end_ym", "")
-                                if _fe_end_ym:
-                                    try:
-                                        _xe = pd.Timestamp(_fe_end_ym + "-01").strftime("%Y-%m-%d")
-                                        _fig_fe.add_shape(type="line", x0=_xe, x1=_xe, y0=0, y1=1,
-                                            xref="x", yref="paper", line=dict(dash="dot", color="#e74c3c", width=1.5))
-                                        _fig_fe.add_annotation(x=_xe, y=0.80, xref="x", yref="paper",
-                                            text=f"ends {_fe['name']}", showarrow=False, xanchor="right",
-                                            font=dict(color="#e74c3c", size=9))
-                                    except Exception:
-                                        pass
-                            _fig_fe.update_layout(**chart_layout("Combined future recurring expenses", height=260))
-                            st.plotly_chart(_fig_fe, use_container_width=True, key=f"fig_fe_{lbl}")
-                        else:
-                            st.caption("No future expenses active within the projection window yet.")
+                    if fe_list:
+                        with st.expander("📊 Preview: monthly impact over time", expanded=False):
+                            _proj_months = pd.date_range(start="2026-01-01", periods=sv.get("n_years", 5) * 12, freq="MS")
+                            _fe_preview = []
+                            for _dt in _proj_months:
+                                _total = 0.0
+                                _dt_ym = f"{_dt.year}-{_dt.month:02d}"
+                                for _fe in fe_list:
+                                    _fe_end_p = _fe.get("end_ym", "")
+                                    if _dt_ym >= _fe.get("start_ym", "9999-99") and (not _fe_end_p or _dt_ym <= _fe_end_p):
+                                        _sy = int(_fe["start_ym"][:4]); _sm_fe = int(_fe["start_ym"][5:7])
+                                        _yf = (_dt.year - _sy) + (_dt.month - _sm_fe) / 12
+                                        _total += _fe["amount"] * (1 + _fe.get("growth", 0.0)) ** max(_yf, 0)
+                                _fe_preview.append({"Month": _dt_ym, "Total future expenses (€)": round(_total)})
+                            _fe_df = pd.DataFrame(_fe_preview)
+                            if _fe_df["Total future expenses (€)"].gt(0).any():
+                                _fig_fe = go.Figure()
+                                _fig_fe.add_trace(go.Scatter(
+                                    x=pd.to_datetime(_fe_df["Month"] + "-01"),
+                                    y=_fe_df["Total future expenses (€)"],
+                                    fill="tozeroy", fillcolor="rgba(231,76,60,0.15)",
+                                    line=dict(color="#e74c3c", width=2), name="Future expenses/mo"
+                                ))
+                                seen_yms = set()
+                                for _fe in fe_list:
+                                    if _fe["start_ym"] not in seen_yms:
+                                        seen_yms.add(_fe["start_ym"])
+                                        _xs = pd.Timestamp(_fe["start_ym"] + "-01").strftime("%Y-%m-%d")
+                                        _fig_fe.add_shape(type="line", x0=_xs, x1=_xs, y0=0, y1=1,
+                                            xref="x", yref="paper", line=dict(dash="dash", color="#f1c40f", width=1.5))
+                                        if not _narrow:
+                                            _fig_fe.add_annotation(x=_xs, y=0.95, xref="x", yref="paper",
+                                                text=_fe["name"], showarrow=False, xanchor="left",
+                                                font=dict(color="#f1c40f", size=10))
+                                    # End marker (red dashed) if end_ym is set
+                                    _fe_end_ym = _fe.get("end_ym", "")
+                                    if _fe_end_ym:
+                                        try:
+                                            _xe = pd.Timestamp(_fe_end_ym + "-01").strftime("%Y-%m-%d")
+                                            _fig_fe.add_shape(type="line", x0=_xe, x1=_xe, y0=0, y1=1,
+                                                xref="x", yref="paper", line=dict(dash="dot", color="#e74c3c", width=1.5))
+                                            if not _narrow:
+                                                _fig_fe.add_annotation(x=_xe, y=0.80, xref="x", yref="paper",
+                                                    text=f"ends {_fe['name']}", showarrow=False, xanchor="right",
+                                                    font=dict(color="#e74c3c", size=9))
+                                        except Exception:
+                                            pass
+                                _fig_fe.update_layout(**chart_layout("Combined future recurring expenses", height=260))
+                                st.plotly_chart(_fig_fe, use_container_width=True, key=f"fig_fe_{lbl}")
+                            else:
+                                st.caption("No future expenses active within the projection window yet.")
 
-                future_expenses = fe_list
+                    future_expenses = fe_list
 
             # ════════════════════════════════════════════════════════════════
-            # 7 — HISTORIC DATA RANGE (ACTUALS)
+            # 7 — HISTORIC DATA RANGE  (paid)
             # ════════════════════════════════════════════════════════════════
-            with st.expander(_lbl_hist, expanded=False):
-                st.caption(
-                    "The period for which you have real income and expense data. "
-                    "The **Actuals tab** shows every month in this range ready to fill in."
-                )
-                import datetime as _dt_setup
-                _today = _dt_setup.date.today()
-                # Build flat list of YYYY-MM strings from Jan 2023 to end of projection + 2 yrs
-                _proj_end_yr = 2026 + n_years
-                _ym_options = [f"{_y}-{_m:02d}" for _y in range(2023, _proj_end_yr + 3) for _m in range(1, 13)]
-                _default_hist_start = sv.get("hist_start", "2026-01")
-                _default_hist_end   = sv.get("hist_end",   _today.strftime("%Y-%m"))
-                _hs_idx = _ym_options.index(_default_hist_start) if _default_hist_start in _ym_options else 0
-                _he_idx = _ym_options.index(_default_hist_end)   if _default_hist_end   in _ym_options else len(_ym_options) - 1
-                _yr_range  = list(range(2023, _proj_end_yr + 3))
-                _mo_names  = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-                # Parse saved start value
-                _hs_yr = int(_default_hist_start[:4]); _hs_mo = int(_default_hist_start[5:])
-                hd1, hd2 = st.columns(2)
-                _hs_yr_sel = hd1.selectbox("From — year",  _yr_range,
-                    index=_yr_range.index(_hs_yr) if _hs_yr in _yr_range else 0,
-                    key=f"hs_yr_{lbl}")
-                _hs_mo_sel = hd2.selectbox("From — month", _mo_names,
-                    index=_hs_mo - 1, key=f"hs_mo_{lbl}")
-                hist_start = f"{_hs_yr_sel}-{(_mo_names.index(_hs_mo_sel)+1):02d}"
-                # End is always locked to the projection end date for consistency
-                _proj_end_ym = f"{_proj_end_yr}-12"
-                hist_end = _proj_end_ym
-                st.info(f"📅 **From:** {hist_start}  →  **To:** {hist_end} *(locked to projection end)*", icon="🔒")
+            with st.expander(_lbl_hist + (" 🔒" if not IS_PAID else ""), expanded=False):
+                if not IS_PAID:
+                    _paid_gate("Actuals Tracking — Historic Date Range", icon="📅")
+                    st.caption("Configure the date range for tracking your real income and savings in the Actuals tab.")
+                    hist_start = sv.get("hist_start", DEFAULTS["hist_start"])
+                    hist_end   = sv.get("hist_end",   DEFAULTS["hist_end"])
+                else:
+                    st.caption(
+                        "The period for which you have real income and expense data. "
+                        "The **Actuals tab** shows every month in this range ready to fill in."
+                    )
+                    import datetime as _dt_setup
+                    _today = _dt_setup.date.today()
+                    # Build flat list of YYYY-MM strings from Jan 2023 to end of projection + 2 yrs
+                    _proj_end_yr = 2026 + n_years
+                    _ym_options = [f"{_y}-{_m:02d}" for _y in range(2023, _proj_end_yr + 3) for _m in range(1, 13)]
+                    _default_hist_start = sv.get("hist_start", "2026-01")
+                    _default_hist_end   = sv.get("hist_end",   _today.strftime("%Y-%m"))
+                    _hs_idx = _ym_options.index(_default_hist_start) if _default_hist_start in _ym_options else 0
+                    _he_idx = _ym_options.index(_default_hist_end)   if _default_hist_end   in _ym_options else len(_ym_options) - 1
+                    _yr_range  = list(range(2023, _proj_end_yr + 3))
+                    _mo_names  = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+                    # Parse saved start value
+                    _hs_yr = int(_default_hist_start[:4]); _hs_mo = int(_default_hist_start[5:])
+                    hd1, hd2 = st.columns(2)
+                    _hs_yr_sel = hd1.selectbox("From — year",  _yr_range,
+                        index=_yr_range.index(_hs_yr) if _hs_yr in _yr_range else 0,
+                        key=f"hs_yr_{lbl}")
+                    _hs_mo_sel = hd2.selectbox("From — month", _mo_names,
+                        index=_hs_mo - 1, key=f"hs_mo_{lbl}")
+                    hist_start = f"{_hs_yr_sel}-{(_mo_names.index(_hs_mo_sel)+1):02d}"
+                    # End is always locked to the projection end date for consistency
+                    _proj_end_ym = f"{_proj_end_yr}-12"
+                    hist_end = _proj_end_ym
+                    st.info(f"📅 **From:** {hist_start}  →  **To:** {hist_end} *(locked to projection end)*", icon="🔒")
 
             params[lbl] = dict(
                 inc_s=inc_s, partner=partner, inc_p=inc_p,
@@ -1338,41 +2511,104 @@ The dashboard automatically applies the correct rate for each year based on your
             sc3.metric("Rent/mo", f"€{p['rent']:,.0f}")
             sc4.metric("Future Mortgage/mo", f"€{mp:,.0f}")
 
-    # ── Save / Load Settings ─────────────────────────────────────────────────
+
+    # ── Navigate to next tab ────────────────────────────────────────────────────
+    st.divider()
+    st.info(
+        "**All inputs set?** Click the **📊 Income & Tax** tab above "
+        "to see your monthly net income forecast, 30% ruling impact and expense breakdown.",
+        icon="➡️",
+    )
+
+    # ── Save / Load Settings  (Pro) ──────────────────────────────────────────
     st.divider()
     st.markdown("### 💾 Save & Load Settings")
-    st.caption(
-        "Your settings are **not stored on the server** — download them to your device "
-        "and re-upload next time to restore everything instantly."
-    )
-    _io_c1, _io_c2 = st.columns(2)
+    if IS_PAID:
+        st.caption(
+            "Your settings are **not stored on the server** — download them to your device "
+            "and re-upload next time to restore everything instantly."
+        )
+        _io_c1, _io_c2 = st.columns(2)
+        _io_c1.download_button(
+            label="⬇️ Download settings (.csv)",
+            data=settings_to_csv_bytes(params["A"], params["B"]),
+            file_name="dutch_dashboard_settings.csv",
+            mime="text/csv",
+            use_container_width=True,
+            help="Saves all current inputs to a CSV file on your device.",
+        )
+        _uploaded_settings = _io_c2.file_uploader(
+            "⬆️ Upload settings (.csv)",
+            type=["csv"],
+            key="settings_upload",
+            label_visibility="collapsed",
+            help="Upload a previously downloaded settings CSV to restore your inputs.",
+        )
+        _io_c2.caption("⬆️ Upload a previously saved settings CSV to restore your inputs.")
+        if _uploaded_settings is not None:
+            _sa_new, _sb_new = settings_from_uploaded_file(_uploaded_settings)
+            st.session_state["saved_A"] = _sa_new
+            st.session_state["saved_B"] = _sb_new
+            st.success("✅ Settings loaded — the page will refresh with your saved values.")
+            st.rerun()
+    else:
+        st.markdown(
+            "<div style='background:#1e293b;border:1px solid #334155;"
+            "border-radius:8px;padding:10px 14px'>"
+            "<span style='color:#f1c40f;font-weight:700'>🔒 Pro feature</span>"
+            " <span style='color:#94a3b8;font-size:12px'>— Upgrade to save and restore "
+            "your settings between sessions.</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
-    # Download button — always available, uses current widget values
-    _io_c1.download_button(
-        label="⬇️ Download settings (.csv)",
-        data=settings_to_csv_bytes(params["A"], params["B"]),
-        file_name="dutch_dashboard_settings.csv",
-        mime="text/csv",
-        use_container_width=True,
-        help="Saves all current inputs to a CSV file on your device. "
-             "Re-upload it next session to restore your settings.",
-    )
-
-    # Upload button — applies immediately via session state + rerun
-    _uploaded_settings = _io_c2.file_uploader(
-        "⬆️ Upload settings (.csv)",
-        type=["csv"],
-        key="settings_upload",
-        label_visibility="collapsed",
-        help="Upload a previously downloaded settings CSV to restore your inputs.",
-    )
-    _io_c2.caption("⬆️ Upload a previously saved settings CSV to restore your inputs.")
-    if _uploaded_settings is not None:
-        _sa_new, _sb_new = settings_from_uploaded_file(_uploaded_settings)
-        st.session_state["saved_A"] = _sa_new
-        st.session_state["saved_B"] = _sb_new
-        st.success("✅ Settings loaded — the page will refresh with your saved values.")
-        st.rerun()
+    # ── Export PDF Report  (Pro) ─────────────────────────────────────────────
+    st.divider()
+    st.markdown("### 📄 Export PDF Report")
+    if IS_PAID:
+        st.markdown(
+            "<div style='background:#eff6ff;border:1px solid #bfdbfe;"
+            "border-radius:8px;padding:10px 14px;margin-bottom:8px'>"
+            "<span style='color:#1e40af;font-weight:700;font-size:13px'>⭐ Pro</span>"
+            " <span style='color:#3b82f6;font-size:12px'>— Full A4 PDF with table of contents, "
+            "income &amp; tax tables, Buy vs Rent, mortgage analysis and setup summary.</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        _pdf_left, _pdf_right = st.columns([2, 1])
+        with _pdf_left:
+            if st.button(
+                "📥 Generate PDF Report",
+                type="primary",
+                use_container_width=True,
+                key="btn_gen_pdf",
+                help="Builds the PDF after clicking — simulations run first.",
+            ):
+                st.session_state["_pdf_requested"] = True
+        with _pdf_right:
+            if st.session_state.get("_pdf_ready"):
+                st.download_button(
+                    label="⬇️ Download PDF",
+                    data=st.session_state["_pdf_ready"],
+                    file_name=st.session_state.get("_pdf_fname", "dutch_dashboard.pdf"),
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key="btn_dl_pdf",
+                )
+            else:
+                st.caption("Click Generate to build the PDF, then download it here.")
+        if st.session_state.get("_pdf_ready"):
+            st.success("✅ PDF ready — click Download above.")
+    else:
+        st.markdown(
+            "<div style='background:#1e293b;border:1px solid #334155;"
+            "border-radius:8px;padding:10px 14px'>"
+            "<span style='color:#f1c40f;font-weight:700'>🔒 Pro feature</span>"
+            " <span style='color:#94a3b8;font-size:12px'>— Upgrade to export a professional "
+            "PDF report with charts, tables and a table of contents.</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
 # ════════════════════════════════════════════════════════════════════════════════
 # RUN SIMULATIONS (after Setup tab so params are defined)
@@ -1381,8 +2617,43 @@ The dashboard automatically applies the correct rate for each year based on your
 pa = params["A"]
 pb = params["B"]
 
+# ── Session-state init ───────────────────────────────────────────────────────
+for _k, _v in [("_pdf_ready", None), ("_pdf_requested", False), ("_pdf_fname", "")]:
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
 df_m_a, df_w_a = run_sim(pa)
 df_m_b, df_w_b = run_sim(pb)
+
+# ── Lazy PDF generation (triggered by Generate button in Setup) ──────────────
+if st.session_state.get("_pdf_requested"):
+    st.session_state["_pdf_requested"] = False
+    with st.spinner("Building PDF report — this takes a few seconds…"):
+        try:
+            import datetime as _dtpdf
+            # Build retirement params dict from session state
+            _ret_p = {
+                "ret_current_age":  st.session_state.get("ret_age_now",  32),
+                "ret_age":          st.session_state.get("ret_age",       67),
+                "ret_target_income":st.session_state.get("ret_target",  3500),
+                "ret_aow":          st.session_state.get("ret_aow",     1450),
+                "ret_pension":      st.session_state.get("ret_pension",   500),
+                "ret_swr":          st.session_state.get("ret_swr",     0.035),
+                "ret_return_pre":   st.session_state.get("ret_ret_pre",  0.07),
+                "ret_return_post":  st.session_state.get("ret_ret_post", 0.04),
+                "ret_inflation":    st.session_state.get("ret_inflation",0.025),
+            }
+            _pdf_bytes = generate_pdf_report(
+                pa, pb, df_m_a, df_w_a, df_m_b, df_w_b,
+                ab_mode=ab_mode, ret_params=_ret_p
+            )
+            st.session_state["_pdf_ready"] = _pdf_bytes
+            st.session_state["_pdf_fname"] = (
+                f"dutch_dashboard_{_dtpdf.date.today():%Y%m%d}.pdf"
+            )
+            st.rerun()  # re-render so Download button appears
+        except Exception as _pdf_err:
+            st.error(f"PDF generation failed: {_pdf_err}")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # TAB 1 — INCOME & TAX
@@ -1526,14 +2797,17 @@ with tabs[1]:
 
     st.divider()
 
-    # ── Actuals overlay toggle ─────────────────────────────────────────────────
-    show_actuals_overlay = st.toggle(
-        "📌 Overlay actuals data on chart",
-        value=True,
-        key="income_tax_actuals_toggle",
-        help="Shows actual income and savings from the 📝 Actuals tab on top of the forecast lines. "
-             "Enter data in the Actuals tab first."
-    )
+    # ── Actuals overlay toggle (paid only) ────────────────────────────────────
+    if IS_PAID:
+        show_actuals_overlay = st.toggle(
+            "📌 Overlay actuals data on chart",
+            value=True,
+            key="income_tax_actuals_toggle",
+            help="Shows actual income and savings from the 📝 Actuals tab on top of the forecast lines. "
+                 "Enter data in the Actuals tab first."
+        )
+    else:
+        show_actuals_overlay = False
 
     # Load actuals for overlay
     _act_overlay = load_actuals()
@@ -1544,13 +2818,13 @@ with tabs[1]:
         st.caption("ℹ️ No actuals data found — enter data in the 📝 Actuals tab first.")
 
     fig1 = go.Figure()
-    fig1.add_trace(go.Scatter(x=df["Date"], y=df["Total Net"], name="Forecast Net Income",
+    fig1.add_trace(go.Scatter(x=df["Date"], y=df["Total Net"], name="Net Income",
                               line=dict(color="#2ecc71", width=2.5),
                               fill="tozeroy", fillcolor="rgba(46,204,113,0.07)"))
-    fig1.add_trace(go.Scatter(x=df["Date"], y=df["Total Expenses"], name="Forecast Expenses",
+    fig1.add_trace(go.Scatter(x=df["Date"], y=df["Total Expenses"], name="Expenses",
                               line=dict(color="#e74c3c", width=2.5),
                               fill="tozeroy", fillcolor="rgba(231,76,60,0.07)"))
-    fig1.add_trace(go.Scatter(x=df["Date"], y=df["Net Saving"], name="Forecast Savings",
+    fig1.add_trace(go.Scatter(x=df["Date"], y=df["Net Saving"], name="Savings",
                               line=dict(color="#3498db", width=2, dash="dot")))
 
     if _has_overlay_data:
@@ -1569,7 +2843,7 @@ with tabs[1]:
         if not _ov_inc.empty:
             fig1.add_trace(go.Scatter(
                 x=_ov_inc["month_dt"], y=_ov_inc["inc_combined"],
-                name="Actual Income (combined)",
+                name="Income (act)",
                 mode="lines+markers",
                 line=dict(color="#27ae60", width=2.5),
                 marker=dict(size=7, symbol="circle"),
@@ -1579,7 +2853,7 @@ with tabs[1]:
                 _ov_s = _ov.dropna(subset=["inc_s_actual"])
                 fig1.add_trace(go.Scatter(
                     x=_ov_s["month_dt"], y=_ov_s["inc_s_actual"],
-                    name=f"Actual Income — {p.get('name_s','You')}",
+                    name=f"{p.get('name_s','You')} (act)",
                     mode="lines+markers",
                     line=dict(color="#2ecc71", width=1.5, dash="dot"),
                     marker=dict(size=5, symbol="circle-open"),
@@ -1588,7 +2862,7 @@ with tabs[1]:
                 _ov_p = _ov.dropna(subset=["inc_p_actual"])
                 fig1.add_trace(go.Scatter(
                     x=_ov_p["month_dt"], y=_ov_p["inc_p_actual"],
-                    name=f"Actual Income — {p.get('name_p','Partner')}",
+                    name=f"{p.get('name_p','Partner')} (act)",
                     mode="lines+markers",
                     line=dict(color="#f1c40f", width=1.5, dash="dot"),
                     marker=dict(size=5, symbol="circle-open"),
@@ -1596,7 +2870,7 @@ with tabs[1]:
         if not _ov_sav.empty:
             fig1.add_trace(go.Scatter(
                 x=_ov_sav["month_dt"], y=_ov_sav["savings_actual"],
-                name="Actual Savings",
+                name="Savings (act)",
                 mode="lines+markers",
                 line=dict(color="#2980b9", width=2, dash="dash"),
                 marker=dict(size=6, symbol="diamond"),
@@ -1611,9 +2885,10 @@ with tabs[1]:
         fig1.add_shape(type="line", x0=_fe_xs, x1=_fe_xs, y0=0, y1=1,
                        xref="x", yref="paper",
                        line=dict(dash="dot", color=_fe_col, width=1.5))
-        fig1.add_annotation(x=_fe_xs, y=0.60 - (_fi * 0.09), xref="x", yref="paper",
-                            text=f"💸 {_fe['name']}", showarrow=False,
-                            xanchor="left", font=dict(color=_fe_col, size=10))
+        if not _narrow:
+            fig1.add_annotation(x=_fe_xs, y=0.60 - (_fi * 0.09), xref="x", yref="paper",
+                                text=f"💸 {_fe['name']}", showarrow=False,
+                                xanchor="left", font=dict(color=_fe_col, size=10))
     fig1.update_layout(**chart_layout("Monthly Income vs Expenses — Forecast" +
                                       (" + Actuals" if _has_overlay_data else ""), height=420))
     st.plotly_chart(fig1, use_container_width=True, key="fig_income_tax_1")
@@ -1775,40 +3050,43 @@ with tabs[2]:
         with st.expander(f"🏷️ House Sale Breakdown — {sell_summary['date'].strftime('%B %Y')} "
                          f"({sell_years:.1f} years after purchase)", expanded=True):
             sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+            _buying_costs_wf = p["house_price"] * 0.02 + 3500   # 2% overdrachtsbelasting + ~€3,500 notaris
             sc1.metric("Sale Price (market value)", f"€{sell_summary['hv']:,.0f}",
                        help="Appreciated house value at time of sale based on the annual appreciation rate in Setup.")
             sc2.metric("Mortgage Payoff", f"−€{sell_summary['mb']:,.0f}",
                        help="Outstanding mortgage balance that must be repaid to the bank on the settlement date.")
             sc3.metric("Selling Costs", f"−€{sell_summary['costs']:,.0f}",
                        help="Estimated selling costs: ~1.5% estate agent (makelaar) fee plus €2,500 fixed costs (notaris, valuatie, etc.).")
-            sc4.metric("Net Proceeds to You", f"€{sell_summary['proceeds']:,.0f}",
-                       help="Sale price minus mortgage payoff and selling costs. This amount is added to your investable cash.")
-            equity_gain = sell_summary["hv"] - p["house_price"] * (1 - p["dp"]) - sell_summary["mb"]
-            sc5.metric("Equity Gained vs Purchase", f"€{sell_summary['hv'] - p['house_price']:,.0f}",
-                       help=f"House value appreciation since purchase: Sale price €{sell_summary['hv']:,.0f} minus original purchase price €{p['house_price']:,.0f}.")
+            sc4.metric("Buying Costs (at purchase)", f"−€{_buying_costs_wf:,.0f}",
+                       help=f"One-off costs paid when buying: 2% overdrachtsbelasting (€{p['house_price']*0.02:,.0f}) + ~€3,500 notaris/taxatie. Included here to show the true net return on the transaction.")
+            sc5.metric("Net Proceeds to You", f"€{sell_summary['proceeds'] - _buying_costs_wf:,.0f}",
+                       help="Sale price minus mortgage payoff, selling costs, and original buying costs. True net return on the full property transaction.")
 
-            # Waterfall: Purchase Price → +Appreciation → −Mortgage → −Selling Costs → Net Proceeds
+            # Waterfall: Purchase Price → −Buying Costs → +Appreciation → −Mortgage → −Selling Costs → Net Proceeds
             _purchase_price = p["house_price"]
             _appreciation   = sell_summary["hv"] - _purchase_price
             fig_sell = go.Figure(go.Waterfall(
                 orientation="v",
-                measure=["absolute", "relative", "relative", "relative", "total"],
-                x=["Purchase Price", "Appreciation", "Mortgage Payoff", "Selling Costs", "Net Proceeds"],
-                y=[_purchase_price, _appreciation, -sell_summary["mb"], -sell_summary["costs"], 0],
+                measure=["absolute", "relative", "relative", "relative", "relative", "total"],
+                x=["Purchase Price", "Buying Costs", "Appreciation", "Mortgage Payoff", "Selling Costs", "Net Proceeds"],
+                y=[_purchase_price, -_buying_costs_wf, _appreciation, -sell_summary["mb"], -sell_summary["costs"], 0],
+                text=[
+                    f"€{_purchase_price:,.0f}",
+                    f"−€{_buying_costs_wf:,.0f}",
+                    f"+€{_appreciation:,.0f}",
+                    f"−€{sell_summary['mb']:,.0f}",
+                    f"−€{sell_summary['costs']:,.0f}",
+                    f"€{sell_summary['proceeds'] - _buying_costs_wf:,.0f}",
+                ],
+                textposition="outside",
                 connector=dict(line=dict(color="rgba(255,255,255,0.3)")),
                 increasing=dict(marker_color="#2ecc71"),
                 decreasing=dict(marker_color="#e74c3c"),
                 totals=dict(marker_color="#3498db"),
-                text=[f"€{_purchase_price:,.0f}",
-                      f"+€{_appreciation:,.0f}",
-                      f"−€{sell_summary['mb']:,.0f}",
-                      f"−€{sell_summary['costs']:,.0f}",
-                      f"€{sell_summary['proceeds']:,.0f}"],
-                textposition="outside",
             ))
             fig_sell.update_layout(**chart_layout(
                 f"House Sale Waterfall — {sell_summary['date'].strftime('%B %Y')}",
-                yaxis_title="€", height=400))
+                yaxis_title="€", height=420))
             st.plotly_chart(fig_sell, use_container_width=True, key="fig_sell_waterfall")
 
     with st.expander("ℹ️ What does this tab show & how is wealth calculated?", expanded=False):
@@ -1829,32 +3107,25 @@ If you've enabled a **sell date**, net proceeds (sale price minus mortgage payof
 
     fig5 = go.Figure()
     fig5.add_trace(go.Scatter(x=dw["Date"], y=dw["Total Wealth (Buy)"],
-                              name="Total Wealth (Buy) ★", line=dict(color="#2ecc71", width=4)))
+                              name="Wealth (Buy) ★", line=dict(color="#2ecc71", width=4)))
     fig5.add_trace(go.Scatter(x=dw["Date"], y=dw["Total Wealth (Rent)"],
-                              name="Total Wealth (Rent)", line=dict(color="#e74c3c", width=3)))
+                              name="Wealth (Rent)", line=dict(color="#e74c3c", width=3)))
     fig5.add_trace(go.Scatter(x=dw["Date"], y=dw["Home Equity"],
-                              name="Home Equity", line=dict(color="#f1c40f", width=2, dash="dot")))
+                              name="Equity", line=dict(color="#f1c40f", width=2, dash="dot")))
     fig5.add_trace(go.Scatter(x=dw["Date"], y=dw["Cash (Buy)"],
-                              name="Cash (Buy)", line=dict(color="#3498db", width=1.5, dash="dash")))
+                              name="Cash", line=dict(color="#3498db", width=1.5, dash="dash")))
     add_events(fig5, p)
     if not crossover_row.empty:
         cx_str = cx_date.strftime("%Y-%m-%d")
         fig5.add_shape(type="line", x0=cx_str, x1=cx_str, y0=0, y1=1,
                        xref="x", yref="paper",
                        line=dict(dash="dot", color="#f1c40f", width=2))
-        fig5.add_annotation(x=cx_str, y=0.75, xref="x", yref="paper",
-                            text=f"🏆 Buy leads<br>{cx_date.strftime('%b %Y')}",
-                            showarrow=False, xanchor="left",
-                            font=dict(color="#f1c40f", size=11))
+        # Buy leads date shown in hover tooltip via vertical line
     if sell_summary:
         sell_str = sell_summary["date"].strftime("%Y-%m-%d")
         fig5.add_shape(type="line", x0=sell_str, x1=sell_str, y0=0, y1=1,
                        xref="x", yref="paper", line=dict(dash="dot", color="#e74c3c", width=2))
-        fig5.add_annotation(x=sell_str, y=0.60, xref="x", yref="paper",
-                            text=f"🏷️ Sold<br>€{sell_summary['hv']:,.0f}<br>Net: €{sell_summary['proceeds']:,.0f}",
-                            showarrow=False, xanchor="left",
-                            font=dict(color="#e74c3c", size=10),
-                            bgcolor="rgba(15,17,23,0.7)", bordercolor="#e74c3c", borderwidth=1)
+        # Sell date shown via vertical line; details in caption below
     if sell_summary:
         st.caption("💡 At the sell date, **Home Equity converts to Cash** — the ★ Total Wealth (Buy) line remains continuous (it only drops by selling costs ~€{:,.0f}). The visible Cash spike is equity being liquidated, not new wealth being created.".format(
             int(sell_summary["costs"])))
@@ -1867,10 +3138,10 @@ If you've enabled a **sell date**, net proceeds (sale price minus mortgage payof
     fig6 = go.Figure()
     fig6.add_trace(go.Scatter(x=dw["Date"], y=dv.clip(lower=0),
                               fill="tozeroy", fillcolor="rgba(46,204,113,0.20)",
-                              line=dict(color="#2ecc71", width=1), name="Buy leads"))
+                              line=dict(color="#2ecc71", width=1), name="Buy ▲"))
     fig6.add_trace(go.Scatter(x=dw["Date"], y=dv.clip(upper=0),
                               fill="tozeroy", fillcolor="rgba(231,76,60,0.20)",
-                              line=dict(color="#e74c3c", width=1), name="Rent leads"))
+                              line=dict(color="#e74c3c", width=1), name="Rent ▲"))
     fig6.add_trace(go.Scatter(x=dw["Date"], y=dv,
                               line=dict(color="white", width=1.5), name="Delta", showlegend=False))
     fig6.add_hline(y=0, line_color="gray", line_dash="dot")
@@ -1880,7 +3151,7 @@ If you've enabled a **sell date**, net proceeds (sale price minus mortgage payof
     daw = dw.groupby("Year").last().reset_index()
     fig7 = go.Figure()
     fig7.add_trace(go.Bar(x=daw["Year"], y=daw["Home Equity"],
-                          name="Home Equity", marker_color="#f1c40f"))
+                          name="Equity", marker_color="#f1c40f"))
     fig7.add_trace(go.Bar(x=daw["Year"], y=daw["Cash (Buy)"].clip(lower=0),
                           name="Cash Savings", marker_color="#2ecc71"))
     fig7.add_trace(go.Scatter(x=daw["Year"], y=daw["Total Wealth (Rent)"],
@@ -2008,13 +3279,13 @@ which also accounts for invested savings, mortgage cashflow, and Box 3 tax.
         fig_be = go.Figure()
         fig_be.add_trace(go.Scatter(
             x=_be_df["Date"], y=_be_df["Appreciation"],
-            name="House Value Appreciation",
+            name="House Value",
             line=dict(color="#2ecc71", width=2.5),
             fill="tozeroy", fillcolor="rgba(46,204,113,0.08)"
         ))
         fig_be.add_trace(go.Scatter(
             x=_be_df["Date"], y=_be_df["Total Tx Costs"],
-            name="Total Transaction Costs (buy + sell)",
+            name="Transaction Costs",
             line=dict(color="#e74c3c", width=2, dash="dash")
         ))
         if not _breakeven_row.empty:
@@ -2022,10 +3293,7 @@ which also accounts for invested savings, mortgage cashflow, and Box 3 tax.
             fig_be.add_shape(type="line", x0=_be_str, x1=_be_str, y0=0, y1=1,
                              xref="x", yref="paper",
                              line=dict(color="#f1c40f", dash="dot", width=2))
-            fig_be.add_annotation(x=_be_str, y=0.85, xref="x", yref="paper",
-                                  text=f"✅ Breakeven<br>{_be_date.strftime('%b %Y')}",
-                                  showarrow=False, xanchor="left",
-                                  font=dict(color="#f1c40f", size=11))
+            # Breakeven date marked by vertical line; readable in hover
         fig_be.update_layout(**chart_layout(
             "House Appreciation vs Total Transaction Costs — Breakeven Hold Period",
             yaxis_title="€", height=380))
@@ -2152,13 +3420,13 @@ For a linear mortgage, both gross and net payments fall steadily.
     # ── Chart 1: Monthly payment gross vs net ───────────────────────────────
     fig_m1 = go.Figure()
     fig_m1.add_trace(go.Scatter(x=df_ann_proj["Date"], y=df_ann_proj["Payment"],
-                                name="Annuity — Gross", line=dict(color="#3498db", width=2)))
+                                name="Annuity Gross", line=dict(color="#3498db", width=2)))
     fig_m1.add_trace(go.Scatter(x=df_ann_proj["Date"], y=df_ann_proj["Net_Payment"],
-                                name="Annuity — Net (after MRI)", line=dict(color="#2ecc71", width=2)))
+                                name="Annuity Net", line=dict(color="#2ecc71", width=2)))
     fig_m1.add_trace(go.Scatter(x=df_lin_proj["Date"], y=df_lin_proj["Payment"],
-                                name="Linear — Gross", line=dict(color="#e67e22", width=2, dash="dash")))
+                                name="Linear Gross", line=dict(color="#e67e22", width=2, dash="dash")))
     fig_m1.add_trace(go.Scatter(x=df_lin_proj["Date"], y=df_lin_proj["Net_Payment"],
-                                name="Linear — Net (after MRI)", line=dict(color="#f1c40f", width=2, dash="dash")))
+                                name="Linear Net", line=dict(color="#f1c40f", width=2, dash="dash")))
     fig_m1.update_layout(**chart_layout(
         "Monthly Mortgage Payment: Gross vs Net (after Hypotheekrenteaftrek)", height=420))
     st.plotly_chart(fig_m1, use_container_width=True, key="fig_mort_1")
@@ -2168,11 +3436,11 @@ For a linear mortgage, both gross and net payments fall steadily.
     # ── Chart 2: Monthly MRI tax benefit ────────────────────────────────────
     fig_m2 = go.Figure()
     fig_m2.add_trace(go.Scatter(x=df_ann_proj["Date"], y=df_ann_proj["MRI_Benefit"],
-                                name="MRI Benefit — Annuity",
+                                name="MRI (Annuity)",
                                 fill="tozeroy", fillcolor="rgba(52,152,219,0.15)",
                                 line=dict(color="#3498db", width=2)))
     fig_m2.add_trace(go.Scatter(x=df_lin_proj["Date"], y=df_lin_proj["MRI_Benefit"],
-                                name="MRI Benefit — Linear",
+                                name="MRI (Linear)",
                                 fill="tozeroy", fillcolor="rgba(230,126,34,0.15)",
                                 line=dict(color="#e67e22", width=2, dash="dash")))
     fig_m2.update_layout(**chart_layout(
@@ -2194,17 +3462,18 @@ For a linear mortgage, both gross and net payments fall steadily.
     # ── Chart 4: Mortgage balance full term ─────────────────────────────────
     fig_m4 = go.Figure()
     fig_m4.add_trace(go.Scatter(x=df_ann["Date"], y=df_ann["Balance"],
-                                name="Balance — Annuity", line=dict(color="#3498db", width=2)))
+                                name="Balance Annuity", line=dict(color="#3498db", width=2)))
     fig_m4.add_trace(go.Scatter(x=df_lin["Date"], y=df_lin["Balance"],
-                                name="Balance — Linear", line=dict(color="#e67e22", width=2, dash="dash")))
+                                name="Balance Linear", line=dict(color="#e67e22", width=2, dash="dash")))
     proj_end = df_ann_proj["Date"].iloc[-1].strftime("%Y-%m-%d")
     fig_m4.add_shape(type="rect",
                      x0=df_ann["Date"].iloc[0].strftime("%Y-%m-%d"), x1=proj_end,
                      y0=0, y1=loan_amount, xref="x", yref="y",
                      fillcolor="rgba(255,255,255,0.03)", line_width=0)
-    fig_m4.add_annotation(x=proj_end, y=loan_amount * 0.95, xref="x", yref="y",
-                           text="← projection window", showarrow=False,
-                           xanchor="right", font=dict(color="#aaa", size=10))
+    if not st.session_state.get("narrow_mode"):
+        fig_m4.add_annotation(x=proj_end, y=loan_amount * 0.95, xref="x", yref="y",
+                               text="← projection window", showarrow=False,
+                               xanchor="right", font=dict(color="#aaa", size=10))
     fig_m4.update_layout(**chart_layout(
         "Outstanding Mortgage Balance (30yr full term)", height=360))
     cl2.plotly_chart(fig_m4, use_container_width=True, key="fig_mort_4")
@@ -2212,15 +3481,15 @@ For a linear mortgage, both gross and net payments fall steadily.
     # ── Chart 5: Cumulative MRI vs interest ─────────────────────────────────
     fig_m5 = go.Figure()
     fig_m5.add_trace(go.Scatter(x=df_ann["Date"], y=df_ann["MRI_Benefit"].cumsum(),
-                                name="Cumul. MRI — Annuity", line=dict(color="#2ecc71", width=2)))
+                                name="Cumul. MRI Ann.", line=dict(color="#2ecc71", width=2)))
     fig_m5.add_trace(go.Scatter(x=df_lin["Date"], y=df_lin["MRI_Benefit"].cumsum(),
-                                name="Cumul. MRI — Linear",
+                                name="Cumul. MRI Lin.",
                                 line=dict(color="#f1c40f", width=2, dash="dash")))
     fig_m5.add_trace(go.Scatter(x=df_ann["Date"], y=df_ann["Interest"].cumsum(),
-                                name="Cumul. Interest — Annuity",
+                                name="Cumul. Int. Ann.",
                                 line=dict(color="#e74c3c", width=1.5, dash="dot")))
     fig_m5.add_trace(go.Scatter(x=df_lin["Date"], y=df_lin["Interest"].cumsum(),
-                                name="Cumul. Interest — Linear",
+                                name="Cumul. Int. Lin.",
                                 line=dict(color="#e67e22", width=1.5, dash="dot")))
     fig_m5.update_layout(**chart_layout(
         "Cumulative Interest Paid vs MRI Tax Benefit (30yr)", height=360))
@@ -2341,10 +3610,11 @@ For a linear mortgage, both gross and net payments fall steadily.
             x0=_price_labels[_cur_idx], x1=_price_labels[_cur_idx],
             y0=0, y1=1, xref="x", yref="paper",
             line=dict(color="#2ecc71", width=2, dash="dash"))
-        _fig_sens.add_annotation(
-            x=_price_labels[_cur_idx], y=0.96, xref="x", yref="paper",
-            text=f"Your price<br>€{p['house_price']//1000:.0f}k",
-            showarrow=False, xanchor="left", font=dict(color="#2ecc71", size=10))
+        if not st.session_state.get("narrow_mode"):
+            _fig_sens.add_annotation(
+                x=_price_labels[_cur_idx], y=0.96, xref="x", yref="paper",
+                text=f"Your price<br>€{p['house_price']//1000:.0f}k",
+                showarrow=False, xanchor="left", font=dict(color="#2ecc71", size=10))
 
         _fig_sens.update_layout(
             barmode="stack",
@@ -2407,984 +3677,1361 @@ Linear mortgages are always cheaper in total interest paid, but the higher initi
 | Early cashflow stress | Lower | Higher |
         """)
 
-# TAB 3 — SCENARIO A/B
+# TAB 4 — SCENARIO A/B  (paid)
 # ════════════════════════════════════════════════════════════════════════════════
 
 with tabs[4]:
-    if not ab_mode:
-        st.info("Enable **🔀 Scenario B** toggle at the top of the **⚙️ Setup** tab, "
-                "then fill in the Scenario B column to compare two scenarios side-by-side.", icon="💡")
+    if not IS_PAID:
+        _paid_gate("Scenario A/B Comparison", icon="🔀")
+        st.caption("Configure two scenarios side-by-side — e.g. buy in 2026 vs 2028, with vs without 30% ruling — and compare net worth, cashflow, and savings over time.")
+        _paid_gate("Net worth comparison · Cashflow chart · 5-year summary", icon="📊", compact=True)
+        _paid_gate("Side-by-side income & tax breakdown", icon="💶", compact=True)
     else:
-        _sa_name = pa.get("scenario_label") or "Scenario A"
-        _sb_name = pb.get("scenario_label") or "Scenario B"
-        st.subheader(f"🔀 {_sa_name} vs {_sb_name}")
-        with st.expander("ℹ️ How to read this tab", expanded=False):
-            st.markdown("""
-Compare two scenarios side-by-side. Configure both in the **⚙️ Setup** tab.
-
-- **Green (A)** and **Blue (B)** traces on all charts
-- 🏠 markers show each scenario's **house purchase date** (solid dash line)
-- 🏷️ markers show each scenario's **house sell date** (dotted line), if enabled
-- The summary table at the top shows end-state numbers for both scenarios
-            """)
-
-        def scenario_summary(dfm, dfw, lbl, p_sc):
-            fin = dfw.iloc[-1]
-            buy_date = pd.Timestamp(year=p_sc["by"], month=p_sc["bm"], day=1).strftime("%b %Y")
-            sell_info = (pd.Timestamp(year=p_sc.get("sy",2031), month=p_sc.get("sm",1), day=1).strftime("%b %Y")
-                         if p_sc.get("sell_house") else "—")
-            return {"Scenario": lbl,
-                    "House Buy Date":      buy_date,
-                    "House Sell Date":     sell_info,
-                    "Mortgage Rate":       f"{p_sc['mort_rate']*100:.1f}%",
-                    "House Price":         f"€{p_sc['house_price']:,.0f}",
-                    "Avg Net Income/mo":   f"€{dfm['Total Net'].mean():,.0f}",
-                    "Avg Expenses/mo":     f"€{dfm['Total Expenses'].mean():,.0f}",
-                    "Avg Savings/mo":      f"€{dfm['Net Saving'].mean():,.0f}",
-                    "End Wealth (Buy)":    f"€{fin['Total Wealth (Buy)']:,.0f}",
-                    "End Wealth (Rent)":   f"€{fin['Total Wealth (Rent)']:,.0f}",
-                    "Home Equity (end)":   f"€{fin['Home Equity']:,.0f}",
-                    "Buy vs Rent Edge":    f"€{fin['Wealth Delta']:,.0f}"}
-
-        cmp = pd.DataFrame([scenario_summary(df_m_a, df_w_a, _sa_name, pa),
-                             scenario_summary(df_m_b, df_w_b, _sb_name, pb)])
-        st.dataframe(cmp.set_index("Scenario").T, use_container_width=True)
-        st.divider()
-
-        # ── Variable diff table ────────────────────────────────────────────
-        st.markdown("#### 🔍 What changed between scenarios?")
-        _diff_fields = [
-            ("Your gross income",    lambda p: f"€{p['inc_s']:,.0f}/yr"),
-            ("Partner gross income", lambda p: f"€{p['inc_p']:,.0f}/yr" if p["partner"] else "—"),
-            ("Your salary growth",   lambda p: f"{p.get('sal_growth',0)*100:.1f}%/yr"),
-            ("Partner salary growth",lambda p: f"{p.get('sal_growth_p',0)*100:.1f}%/yr" if p["partner"] else "—"),
-            ("30% Ruling (You)",     lambda p: f"{'On' if p.get('ruling_s') else 'Off'} {p.get('rs_s',p['rs'])}–{p.get('re_s',p['re'])}"),
-            ("30% Ruling (Partner)", lambda p: f"{'On' if p.get('ruling_p') else 'Off'} {p.get('rs_p',p['rs'])}–{p.get('re_p',p['re'])}" if p["partner"] else "—"),
-            ("Rent",                 lambda p: f"€{p['rent']:,.0f}/mo"),
-            ("House price",          lambda p: f"€{p['house_price']:,.0f}"),
-            ("Down payment",         lambda p: f"{p['dp']*100:.0f}%"),
-            ("Mortgage rate",        lambda p: f"{p['mort_rate']*100:.2f}%"),
-            ("Mortgage type",        lambda p: p.get("mort_type","Annuity")),
-            ("Buy date",             lambda p: f"{p['by']}-{p['bm']:02d}"),
-            ("Sell house",           lambda p: f"Yes — {p.get('sy','')} mo {p.get('sm','')}" if p.get("sell_house") else "No"),
-            ("Projection years",     lambda p: str(p.get("n_years", 5))),
-            ("Starting savings",     lambda p: f"€{p.get('savings',0):,.0f}"),
-            ("House appreciation",   lambda p: f"{p.get('ha',0.03)*100:.1f}%/yr"),
-            ("Investment return",    lambda p: f"{p.get('ir',0.05)*100:.1f}%/yr"),
-            ("Health insurance",     lambda p: f"€{p.get('hi',420)}/mo"),
-            ("Groceries",            lambda p: f"€{p.get('gr',400)}/mo"),
-            ("Utilities",            lambda p: f"€{p.get('utilities',200)}/mo"),
-            ("Car (fuel+ins)",       lambda p: f"€{p.get('cf',100)+p.get('ci',100)}/mo"),
-            ("Phone",                lambda p: f"€{p.get('phone',50)}/mo"),
-            ("Subscriptions",        lambda p: f"€{p.get('subscriptions',50)}/mo"),
-            ("Gym",                  lambda p: f"€{p.get('gym',40)}/mo"),
-            ("Dog",                  lambda p: f"€{p.get('dog',150)}/mo"),
-            ("Other",                lambda p: f"€{p.get('ot',300)}/mo"),
-            ("Children dagopvang",   lambda p: str(p.get("n_kdv", 0))),
-            ("Children BSO",         lambda p: str(p.get("n_bso", 0))),
-            ("Net worth start",      lambda p: f"€{p.get('net_worth_start',0):,.0f}"),
-        ]
-        _diff_rows = []
-        for _fname, _fget in _diff_fields:
-            try:
-                _va = _fget(pa); _vb = _fget(pb)
-            except Exception:
-                continue
-            if _va != _vb:
-                _diff_rows.append({"Variable": _fname, _sa_name: _va, _sb_name: _vb})
-        if _diff_rows:
-            _diff_df = pd.DataFrame(_diff_rows)
-            st.dataframe(_diff_df.set_index("Variable"), use_container_width=True)
-            st.caption(f"Showing {len(_diff_rows)} variable(s) that differ between {_sa_name} and {_sb_name}. Identical inputs are hidden.")
+        if not ab_mode:
+            st.info("Enable **🔀 Scenario B** toggle at the top of the **⚙️ Setup** tab, "
+                    "then fill in the Scenario B column to compare two scenarios side-by-side.", icon="💡")
         else:
-            st.info("No differences found — Scenarios A and B have identical inputs. Change some values in Setup to compare.", icon="🔍")
+            _sa_name = pa.get("scenario_label") or "Scenario A"
+            _sb_name = pb.get("scenario_label") or "Scenario B"
+            st.subheader(f"🔀 {_sa_name} vs {_sb_name}")
+            with st.expander("ℹ️ How to read this tab", expanded=False):
+                st.markdown("""
+    Compare two scenarios side-by-side. Configure both in the **⚙️ Setup** tab.
+
+    - **Green (A)** and **Blue (B)** traces on all charts
+    - 🏠 markers show each scenario's **house purchase date** (solid dash line)
+    - 🏷️ markers show each scenario's **house sell date** (dotted line), if enabled
+    - The summary table at the top shows end-state numbers for both scenarios
+                """)
+
+            def scenario_summary(dfm, dfw, lbl, p_sc):
+                fin = dfw.iloc[-1]
+                buy_date = pd.Timestamp(year=p_sc["by"], month=p_sc["bm"], day=1).strftime("%b %Y")
+                sell_info = (pd.Timestamp(year=p_sc.get("sy",2031), month=p_sc.get("sm",1), day=1).strftime("%b %Y")
+                             if p_sc.get("sell_house") else "—")
+                return {"Scenario": lbl,
+                        "House Buy Date":      buy_date,
+                        "House Sell Date":     sell_info,
+                        "Mortgage Rate":       f"{p_sc['mort_rate']*100:.1f}%",
+                        "House Price":         f"€{p_sc['house_price']:,.0f}",
+                        "Avg Net Income/mo":   f"€{dfm['Total Net'].mean():,.0f}",
+                        "Avg Expenses/mo":     f"€{dfm['Total Expenses'].mean():,.0f}",
+                        "Avg Savings/mo":      f"€{dfm['Net Saving'].mean():,.0f}",
+                        "End Wealth (Buy)":    f"€{fin['Total Wealth (Buy)']:,.0f}",
+                        "End Wealth (Rent)":   f"€{fin['Total Wealth (Rent)']:,.0f}",
+                        "Home Equity (end)":   f"€{fin['Home Equity']:,.0f}",
+                        "Buy vs Rent Edge":    f"€{fin['Wealth Delta']:,.0f}"}
+
+            cmp = pd.DataFrame([scenario_summary(df_m_a, df_w_a, _sa_name, pa),
+                                 scenario_summary(df_m_b, df_w_b, _sb_name, pb)])
+            st.dataframe(cmp.set_index("Scenario").T, use_container_width=True)
+            st.divider()
+
+            # ── Variable diff table ────────────────────────────────────────────
+            st.markdown("#### 🔍 What changed between scenarios?")
+            _diff_fields = [
+                ("Your gross income",    lambda p: f"€{p['inc_s']:,.0f}/yr"),
+                ("Partner gross income", lambda p: f"€{p['inc_p']:,.0f}/yr" if p["partner"] else "—"),
+                ("Your salary growth",   lambda p: f"{p.get('sal_growth',0)*100:.1f}%/yr"),
+                ("Partner salary growth",lambda p: f"{p.get('sal_growth_p',0)*100:.1f}%/yr" if p["partner"] else "—"),
+                ("30% Ruling (You)",     lambda p: f"{'On' if p.get('ruling_s') else 'Off'} {p.get('rs_s',p['rs'])}–{p.get('re_s',p['re'])}"),
+                ("30% Ruling (Partner)", lambda p: f"{'On' if p.get('ruling_p') else 'Off'} {p.get('rs_p',p['rs'])}–{p.get('re_p',p['re'])}" if p["partner"] else "—"),
+                ("Rent",                 lambda p: f"€{p['rent']:,.0f}/mo"),
+                ("House price",          lambda p: f"€{p['house_price']:,.0f}"),
+                ("Down payment",         lambda p: f"{p['dp']*100:.0f}%"),
+                ("Mortgage rate",        lambda p: f"{p['mort_rate']*100:.2f}%"),
+                ("Mortgage type",        lambda p: p.get("mort_type","Annuity")),
+                ("Buy date",             lambda p: f"{p['by']}-{p['bm']:02d}"),
+                ("Sell house",           lambda p: f"Yes — {p.get('sy','')} mo {p.get('sm','')}" if p.get("sell_house") else "No"),
+                ("Projection years",     lambda p: str(p.get("n_years", 5))),
+                ("Starting savings",     lambda p: f"€{p.get('savings',0):,.0f}"),
+                ("House appreciation",   lambda p: f"{p.get('ha',0.03)*100:.1f}%/yr"),
+                ("Investment return",    lambda p: f"{p.get('ir',0.05)*100:.1f}%/yr"),
+                ("Health insurance",     lambda p: f"€{p.get('hi',420)}/mo"),
+                ("Groceries",            lambda p: f"€{p.get('gr',400)}/mo"),
+                ("Utilities",            lambda p: f"€{p.get('utilities',200)}/mo"),
+                ("Car (fuel+ins)",       lambda p: f"€{p.get('cf',100)+p.get('ci',100)}/mo"),
+                ("Phone",                lambda p: f"€{p.get('phone',50)}/mo"),
+                ("Subscriptions",        lambda p: f"€{p.get('subscriptions',50)}/mo"),
+                ("Gym",                  lambda p: f"€{p.get('gym',40)}/mo"),
+                ("Dog",                  lambda p: f"€{p.get('dog',150)}/mo"),
+                ("Other",                lambda p: f"€{p.get('ot',300)}/mo"),
+                ("Children dagopvang",   lambda p: str(p.get("n_kdv", 0))),
+                ("Children BSO",         lambda p: str(p.get("n_bso", 0))),
+                ("Net worth start",      lambda p: f"€{p.get('net_worth_start',0):,.0f}"),
+            ]
+            _diff_rows = []
+            for _fname, _fget in _diff_fields:
+                try:
+                    _va = _fget(pa); _vb = _fget(pb)
+                except Exception:
+                    continue
+                if _va != _vb:
+                    _diff_rows.append({"Variable": _fname, _sa_name: _va, _sb_name: _vb})
+            if _diff_rows:
+                _diff_df = pd.DataFrame(_diff_rows)
+                st.dataframe(_diff_df.set_index("Variable"), use_container_width=True)
+                st.caption(f"Showing {len(_diff_rows)} variable(s) that differ between {_sa_name} and {_sb_name}. Identical inputs are hidden.")
+            else:
+                st.info("No differences found — Scenarios A and B have identical inputs. Change some values in Setup to compare.", icon="🔍")
+            st.divider()
+
+            cl, cr = st.columns(2)
+
+            # ── Chart 1: Net income & savings with buy/sell markers ───────────────
+            fig_c1 = go.Figure()
+            fig_c1.add_trace(go.Scatter(x=df_m_a["Date"], y=df_m_a["Total Net"],
+                                        name="Net Income A", line=dict(color="#2ecc71", width=2)))
+            fig_c1.add_trace(go.Scatter(x=df_m_b["Date"], y=df_m_b["Total Net"],
+                                        name="Net Income B", line=dict(color="#3498db", width=2, dash="dash")))
+            fig_c1.add_trace(go.Scatter(x=df_m_a["Date"], y=df_m_a["Net Saving"],
+                                        name="Savings A", line=dict(color="#f1c40f", width=1.5, dash="dot")))
+            fig_c1.add_trace(go.Scatter(x=df_m_b["Date"], y=df_m_b["Net Saving"],
+                                        name="Savings B", line=dict(color="#e67e22", width=1.5, dash="dot")))
+            add_events(fig_c1, pa, label="A", buy_y=0.88, sell_y=0.75,
+                       buy_color="#2ecc71", sell_color="#27ae60")
+            add_events(fig_c1, pb, label="B", buy_y=0.78, sell_y=0.65,
+                       buy_color="#3498db", sell_color="#2980b9")
+            fig_c1.update_layout(**chart_layout("Net Income & Savings: A vs B", height=420))
+            cl.plotly_chart(fig_c1, use_container_width=True, key="fig_ab_c1")
+
+            # ── Chart 2: Total wealth with buy/sell markers ───────────────────────
+            fig_c2 = go.Figure()
+            fig_c2.add_trace(go.Scatter(x=df_w_a["Date"], y=df_w_a["Total Wealth (Buy)"],
+                                        name="Buy Wealth A", line=dict(color="#2ecc71", width=2.5)))
+            fig_c2.add_trace(go.Scatter(x=df_w_b["Date"], y=df_w_b["Total Wealth (Buy)"],
+                                        name="Buy Wealth B", line=dict(color="#3498db", width=2.5, dash="dash")))
+            fig_c2.add_trace(go.Scatter(x=df_w_a["Date"], y=df_w_a["Total Wealth (Rent)"],
+                                        name="Rent Wealth A", line=dict(color="#e74c3c", width=1.5, dash="dot")))
+            fig_c2.add_trace(go.Scatter(x=df_w_b["Date"], y=df_w_b["Total Wealth (Rent)"],
+                                        name="Rent Wealth B", line=dict(color="#e67e22", width=1.5, dash="dot")))
+            add_events(fig_c2, pa, label="A", buy_y=0.88, sell_y=0.75,
+                       buy_color="#2ecc71", sell_color="#27ae60")
+            add_events(fig_c2, pb, label="B", buy_y=0.78, sell_y=0.65,
+                       buy_color="#3498db", sell_color="#2980b9")
+            fig_c2.update_layout(**chart_layout("Total Wealth: A vs B", height=420))
+            cr.plotly_chart(fig_c2, use_container_width=True, key="fig_ab_c2")
+
+            # ── Chart 3: Expense breakdown (mid-period, all categories) ──────────
+            fig_c3 = go.Figure()
+            cats = ["Housing (net MRI)", "Health Ins.", "Car", "Groceries",
+                    "Utilities", "Phone & Subs", "Gym", "Dog", "Other"]
+            midx_a = min(30, len(df_m_a)-1); midx_b = min(30, len(df_m_b)-1)
+            m30a = df_m_a.iloc[midx_a]; m30b = df_m_b.iloc[midx_b]
+            va = [max(m30a["Housing Cost"] - m30a["MRI Benefit"], 0),
+                  pa["hi"], pa["cf"]+pa["ci"], pa["gr"],
+                  pa.get("utilities",0), pa.get("phone",0)+pa.get("subscriptions",0),
+                  pa.get("gym",0), pa.get("dog",0), pa["ot"]]
+            vb = [max(m30b["Housing Cost"] - m30b["MRI Benefit"], 0),
+                  pb["hi"], pb["cf"]+pb["ci"], pb["gr"],
+                  pb.get("utilities",0), pb.get("phone",0)+pb.get("subscriptions",0),
+                  pb.get("gym",0), pb.get("dog",0), pb["ot"]]
+            fig_c3.add_trace(go.Bar(name=_sa_name, x=cats, y=va, marker_color="#2ecc71"))
+            fig_c3.add_trace(go.Bar(name=_sb_name, x=cats, y=vb, marker_color="#3498db"))
+            fig_c3.update_layout(barmode="group",
+                                  **chart_layout("Monthly Expense Breakdown: A vs B (mid-period)", height=380))
+            st.plotly_chart(fig_c3, use_container_width=True, key="fig_ab_c3")
+
+            # ── Chart 4: Home equity trajectory ──────────────────────────────────
+            fig_c4 = go.Figure()
+            fig_c4.add_trace(go.Scatter(x=df_w_a["Date"], y=df_w_a["Home Equity"],
+                                        name="Home Equity A", line=dict(color="#f1c40f", width=2),
+                                        fill="tozeroy", fillcolor="rgba(241,196,15,0.06)"))
+            fig_c4.add_trace(go.Scatter(x=df_w_b["Date"], y=df_w_b["Home Equity"],
+                                        name="Home Equity B", line=dict(color="#e67e22", width=2, dash="dash"),
+                                        fill="tozeroy", fillcolor="rgba(230,126,34,0.06)"))
+            add_events(fig_c4, pa, label="A", buy_y=0.88, sell_y=0.75,
+                       buy_color="#2ecc71", sell_color="#27ae60")
+            add_events(fig_c4, pb, label="B", buy_y=0.78, sell_y=0.65,
+                       buy_color="#3498db", sell_color="#2980b9")
+            fig_c4.update_layout(**chart_layout("Home Equity Over Time: A vs B", height=360))
+            st.plotly_chart(fig_c4, use_container_width=True, key="fig_ab_c4")
+
+            # ── How are these numbers calculated? (bottom of tab) ─────────────────
+            st.divider()
+            with st.expander("📖 How are these numbers calculated?", expanded=False):
+                st.markdown("""
+    ### Scenario A/B Comparison
+
+    Both scenarios run the full financial model independently with their own inputs — income, tax, mortgage, savings, appreciation, and Box 3 wealth tax are all computed separately per scenario.
+
+    **Chart guide:**
+    - **Net Income & Savings** — monthly take-home pay and savings surplus per scenario. Differences arise from income levels, ruling periods, salary growth, or expense differences.
+    - **Total Wealth** — total net worth over time for buy and rent within each scenario. The crossover point (buy beats rent) may differ if house prices, rates, or appreciation rates differ between scenarios.
+    - **Expense Breakdown** — side-by-side bar at month ~30 for each expense category. Quickly shows where one scenario costs more.
+    - **Home Equity** — equity build-up under each scenario's mortgage. Driven by house price, down payment %, appreciation rate, and mortgage rate.
+
+    **"What changed?" diff table** lists every input that differs between A and B — use this to understand exactly what is driving any outcome difference.
+
+    **Tip:** Set Scenario A as your base case and use Scenario B as a what-if — e.g., buying later, a different mortgage rate, or modelling a house sale.
+                """)
+
+    # ════════════════════════════════════════════════════════════════════════════════
+    # TAB 4 — SENSITIVITY
+    # ════════════════════════════════════════════════════════════════════════════════
+
+    # ════════════════════════════════════════════════════════════════════════════════
+    # TAB 5 — ACTUALS  (paid)
+    # ════════════════════════════════════════════════════════════════════════════════
+
+with tabs[5]:
+    if not IS_PAID:
+        _paid_gate("Actuals Tracking", icon="📝")
+        st.caption(
+            "Enter your real monthly income and savings to track actuals vs forecast. "
+            "See exactly where you stand, spot trends, and measure progress toward your goals."
+        )
+        _paid_gate("Monthly income entry · ING bank statement import", icon="🏦", compact=True)
+        _paid_gate("Actual vs forecast charts · Variance analysis", icon="📊", compact=True)
+        _paid_gate("Cumulative savings tracker · Net worth over time", icon="💎", compact=True)
+    else:
+        st.subheader("📝 Actuals vs Forecast")
+
+        p_act     = pa
+        has_partner = bool(p_act.get("partner", False))
+        actuals_df  = load_actuals()
+
+        # ── Date range from Setup ─────────────────────────────────────────────────
+        hist_start_str = p_act.get("hist_start", "2026-01")
+        hist_end_str   = p_act.get("hist_end",   pd.Timestamp.today().strftime("%Y-%m"))
+        today_str      = pd.Timestamp.today().strftime("%Y-%m")
+
+        # Clamp end to not exceed hist_end
+        st.info(
+            f"📅 Showing actuals for **{hist_start_str}** → **{hist_end_str}** "
+            f"as configured in the ⚙️ Setup tab → 📅 Historic Data Range. "
+            f"Use **➕ Add Month** to extend beyond this range.",
+            icon="📋"
+        )
+
+        # ── Session state: extra months beyond hist_end ───────────────────────────
+        if "act_extra_months" not in st.session_state:
+            st.session_state["act_extra_months"] = 0
+
+        # ── Build month range: hist_start → hist_end + extras ────────────────────
+        hist_start_ts = pd.Timestamp(hist_start_str + "-01")
+        hist_end_ts   = pd.Timestamp(hist_end_str   + "-01")
+        extra         = st.session_state["act_extra_months"]
+
+        # Months from hist_start to hist_end
+        all_months = pd.date_range(start=hist_start_ts, end=hist_end_ts, freq="MS")
+
+        # Add any extra months unlocked via ➕ Add Month
+        if extra > 0:
+            extra_dates = pd.date_range(
+                start=hist_end_ts + pd.DateOffset(months=1), periods=extra, freq="MS")
+            all_months = all_months.append(extra_dates)
+
+        month_strs  = [d.strftime("%Y-%m") for d in all_months]
+        month_labels = [d.strftime("%b %Y") for d in all_months]
+
+        # ── Merge saved actuals ────────────────────────────────────────────────────
+        base_act = pd.DataFrame({"month": month_strs, "label": month_labels})
+        if not actuals_df.empty and "month" in actuals_df.columns:
+            saved_cols = [c for c in ["month","inc_s_actual","inc_p_actual","savings_actual","note"]
+                          if c in actuals_df.columns]
+            base_act = base_act.merge(actuals_df[saved_cols], on="month", how="left")
+        for col_name in ["inc_s_actual","inc_p_actual","savings_actual"]:
+            if col_name not in base_act.columns: base_act[col_name] = None
+            base_act[col_name] = pd.to_numeric(base_act[col_name], errors="coerce")
+        if "note" not in base_act.columns: base_act["note"] = ""
+        base_act["note"] = base_act["note"].fillna("")
+
+        # ── Compute forecast for every month ──────────────────────────────────────
+        fc_rows = []
+        for dt in all_months:
+            yr = dt.year; mo_n = dt.month
+            # For months beyond projection window, use last projection year's settings
+            yr_tax = min(yr, 2030)
+            a30_s  = p_act.get("ruling_s", True)  and p_act.get("rs_s", p_act["rs"]) <= yr < p_act.get("re_s", p_act["re"])
+            a30_p  = p_act.get("ruling_p", False) and p_act.get("rs_p", p_act["rs"]) <= yr < p_act.get("re_p", p_act["re"])
+            _act_rates_s = ruling_rate(p_act.get("rs_s_start", p_act.get("rs_s", p_act["rs"])))
+            _act_rates_p = ruling_rate(p_act.get("rs_p_start", p_act.get("rs_p", p_act["rs"])))
+            _re_s_act = _act_rates_s.get(yr, 0.30) if a30_s else 0.30
+            _re_p_act = _act_rates_p.get(yr, 0.30) if a30_p else 0.30
+            sg     = p_act.get("sal_growth", 0.0)
+            sg_p   = p_act.get("sal_growth_p", sg)
+            yrs_e  = yr - 2026
+            inc_s_adj = p_act["inc_s"] * (1 + sg)   ** yrs_e
+            inc_p_adj = p_act["inc_p"] * (1 + sg_p) ** yrs_e
+            nm_s  = net_monthly_calc(inc_s_adj, yr_tax, a30_s, _re_s_act)
+            nm_p  = net_monthly_calc(inc_p_adj, yr_tax, a30_p, _re_p_act) if has_partner else 0
+            gross = inc_s_adj + (inc_p_adj if has_partner else 0)
+            zts   = zorgtoeslag(gross, has_partner)
+            owns  = (yr > p_act["by"]) or (yr == p_act["by"] and mo_n >= p_act["bm"])
+            housing = mort_payment(p_act["house_price"], p_act["dp"], p_act["mort_rate"]) \
+                      if owns else p_act["rent"]
+            recurring = (p_act["hi"] + p_act["cf"] + p_act["ci"] + p_act["gr"] + p_act["ot"]
+                         + p_act.get("utilities",0) + p_act.get("phone",0)
+                         + p_act.get("subscriptions",0) + p_act.get("gym",0) + p_act.get("dog",0))
+            fixed_total = housing + recurring
+            fc_rows.append({
+                "month":          dt.strftime("%Y-%m"),
+                "fc_inc_s":       round(nm_s),
+                "fc_inc_p":       round(nm_p),
+                "fc_inc_total":   round(nm_s + nm_p),
+                "fc_housing":     round(housing),
+                "fc_recurring":   round(recurring),
+                "fc_fixed":       round(fixed_total),
+                "fc_zts":         round(zts),
+                "fc_sav":         round(nm_s + nm_p + zts - fixed_total),
+            })
+        fc_df    = pd.DataFrame(fc_rows)
+        base_act = base_act.merge(fc_df, on="month", how="left")
+
+        # All months in range are editable (bounded by hist_start/hist_end + extras)
+        editable = base_act.copy()
+
+        # ── Fixed expenses breakdown ───────────────────────────────────────────────
+        with st.expander("📋 Fixed Expenses breakdown (from Setup)", expanded=False):
+            _today_ts = pd.Timestamp.today()
+            owns_now = (_today_ts.year > p_act["by"]) or                    (_today_ts.year == p_act["by"] and _today_ts.month >= p_act["bm"])
+            h_now = mort_payment(p_act["house_price"], p_act["dp"], p_act["mort_rate"]) \
+                    if owns_now else p_act["rent"]
+            fe_items = {
+                "Housing (rent/mortgage)": h_now,
+                "Health insurance":        p_act["hi"],
+                "Car (fuel + insurance)":  p_act["cf"] + p_act["ci"],
+                "Groceries":               p_act["gr"],
+                "Utilities":               p_act.get("utilities", 0),
+                "Phone & subscriptions":   p_act.get("phone",0) + p_act.get("subscriptions",0),
+                "Gym":                     p_act.get("gym", 0),
+                "Dog":                     p_act.get("dog", 0),
+                "Other":                   p_act["ot"],
+            }
+            fe_rows = [{"Category": k, "€/month": f"€{v:,.0f}"}
+                       for k, v in fe_items.items() if v > 0]
+            fe_rows.append({"Category": "TOTAL", "€/month": f"€{sum(fe_items.values()):,.0f}"})
+            st.dataframe(pd.DataFrame(fe_rows), use_container_width=True, hide_index=True)
+            st.caption("Change these in the ⚙️ Setup tab → 🧾 Monthly Expenses.")
+
+        # ── Bank statement importer ───────────────────────────────────────────────
+        with st.expander("🏦 Import income from Bank Statement (optional)", expanded=False):
+            st.markdown(
+                """
+    Upload your **ING bank statement CSV** (semicolon-delimited export).  
+    The importer reads only **Credit** rows and sums them per calendar month.  
+    The totals are treated as **income** and fill the *Actual Income* columns in the table below.  
+    You can still edit every cell manually after importing.
+
+    > **Columns expected:** `Date ; Name / Description ; Account ; Counterparty ; Code ;`  
+    > `Debit/credit ; Amount (EUR) ; Transaction type ; Notifications`
+                """
+            )
+            imp_col1, imp_col2 = st.columns(2)
+            with imp_col1:
+                st.markdown(f"**Your statement** *(fills: Actual You income)*")
+                bank_file_s = st.file_uploader(
+                    "Your bank statement (.csv)",
+                    type=["csv"],
+                    key="bank_stmt_you",
+                    label_visibility="collapsed",
+                )
+            with imp_col2:
+                st.markdown(f"**Partner's statement** *(fills: Actual Partner income)*")
+                bank_file_p = st.file_uploader(
+                    "Partner bank statement (.csv)",
+                    type=["csv"],
+                    key="bank_stmt_partner",
+                    label_visibility="collapsed",
+                    disabled=not has_partner,
+                    help="Enable partner in Setup first." if not has_partner else "",
+                )
+
+            parsed_s, parsed_p = None, None
+            err_msgs = []
+
+            if bank_file_s:
+                try:
+                    parsed_s = parse_bank_statement(bank_file_s)
+                    st.success(f"✅ Your statement: {len(parsed_s)} month(s) of Credit entries parsed.", icon="🏦")
+                    prev_s = parsed_s.copy()
+                    prev_s["amount"] = prev_s["amount"].apply(lambda x: f"€{x:,.2f}")
+                    prev_s.columns = ["Month", "Credit Total (income)"]
+                    st.dataframe(prev_s, use_container_width=True, hide_index=True)
+                except Exception as exc:
+                    err_msgs.append(f"Your statement: {exc}")
+
+            if bank_file_p and has_partner:
+                try:
+                    parsed_p = parse_bank_statement(bank_file_p)
+                    st.success(f"✅ Partner statement: {len(parsed_p)} month(s) of Credit entries parsed.", icon="🏦")
+                    prev_p = parsed_p.copy()
+                    prev_p["amount"] = prev_p["amount"].apply(lambda x: f"€{x:,.2f}")
+                    prev_p.columns = ["Month", "Credit Total (income)"]
+                    st.dataframe(prev_p, use_container_width=True, hide_index=True)
+                except Exception as exc:
+                    err_msgs.append(f"Partner statement: {exc}")
+
+            for em in err_msgs:
+                st.error(f"❌ {em}")
+
+            if (parsed_s is not None or parsed_p is not None):
+                if st.button("📥 Apply to table (income columns)", type="primary"):
+                    existing = load_actuals()  # always returns DataFrame with all _ACTUALS_COLS
+
+                    def _apply_income(existing_df, monthly_df, col):
+                        for _, row in monthly_df.iterrows():
+                            mask = existing_df["month"] == row["month"]
+                            if mask.any():
+                                existing_df.loc[mask, col] = row["amount"]
+                            else:
+                                new_row = {c: None for c in _ACTUALS_COLS}
+                                new_row["month"] = row["month"]
+                                new_row["note"]  = ""
+                                new_row[col]     = row["amount"]
+                                existing_df = pd.concat(
+                                    [existing_df, pd.DataFrame([new_row])], ignore_index=True
+                                )
+                        return existing_df
+
+                    if parsed_s is not None:
+                        existing = _apply_income(existing, parsed_s, "inc_s_actual")
+                    if parsed_p is not None:
+                        existing = _apply_income(existing, parsed_p, "inc_p_actual")
+
+                    existing = existing.sort_values("month").reset_index(drop=True)
+                    save_actuals(existing)
+                    st.success("✅ Income columns updated from bank statement(s). Table refreshed below.")
+                    st.rerun()
+
+        # ── Input grid — grouped by year ─────────────────────────────────────────
+        st.markdown("### ✏️ Enter Monthly Actuals")
+
+        if has_partner:
+            col_w   = [1.4, 1.3, 1.3, 1.3, 1.3, 1.2, 1.3, 1.6]
+            headers = ["**Month**", "**Target**",
+                       "**You (€)**", "**Partner (€)**",
+                       "**Savings (€)**", "**Fixed**", "**Variable**", "**Note**"]
+        else:
+            col_w   = [1.5, 1.5, 1.8, 1.5, 1.5, 1.5, 2.0]
+            headers = ["**Month**", "**Target**",
+                       "**Income (€)**", "**Savings (€)**",
+                       "**Fixed**", "**Variable**", "**Note**"]
+
+        # Group months by year
+        editable["year"] = editable["month"].str[:4]
+        years_in_range   = editable["year"].unique().tolist()
+        current_year     = pd.Timestamp.today().strftime("%Y")
+
+        updated_rows = []
+
+        for yr_str in years_in_range:
+            yr_rows = editable[editable["year"] == yr_str]
+
+            # ── Year summary for the expander label ───────────────────────────────
+            yr_inc_s = yr_rows["inc_s_actual"].sum(skipna=True)
+            yr_inc_p = yr_rows["inc_p_actual"].sum(skipna=True) if has_partner else 0
+            yr_sav   = yr_rows["savings_actual"].sum(skipna=True)
+            yr_has_data = (
+                yr_rows["inc_s_actual"].notna().any() or
+                yr_rows["inc_p_actual"].notna().any() or
+                yr_rows["savings_actual"].notna().any()
+            )
+            _yr_inc_total = yr_inc_s + yr_inc_p
+            if yr_has_data:
+                _yr_label_detail = (
+                    f"  ·  Income: €{_yr_inc_total:,.0f}"
+                    + (f"  ·  Savings: €{yr_sav:,.0f}" if yr_rows["savings_actual"].notna().any() else "")
+                )
+            else:
+                _yr_label_detail = "  ·  no data entered yet"
+
+            # All years collapsed by default — user opens the year they want to edit
+            _yr_open = False
+
+            with st.expander(f"📅 **{yr_str}**{_yr_label_detail}", expanded=_yr_open):
+                # Column headers inside each year block
+                hcols = st.columns(col_w)
+                for hcol, hdr in zip(hcols, headers):
+                    hcol.markdown(hdr)
+
+                for _, row in yr_rows.iterrows():
+                    is_future = row["month"] > today_str
+                    cur_inc_s  = float(row["inc_s_actual"]) if pd.notna(row["inc_s_actual"]) else None
+                    cur_inc_p  = float(row["inc_p_actual"]) if pd.notna(row["inc_p_actual"]) else None
+                    cur_sav    = float(row["savings_actual"]) if pd.notna(row["savings_actual"]) else None
+                    cur_note   = row["note"] if row["note"] else ""
+                    fixed      = row["fc_fixed"]
+                    target_sav = row["fc_sav"]
+                    lbl_txt    = f"**{row['label']}**" + (" 🔮" if is_future else "")
+
+                    if has_partner:
+                        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(col_w)
+                        c1.markdown(lbl_txt)
+                        ts_col = "#2ecc71" if target_sav >= 0 else "#e74c3c"
+                        c2.markdown(f"<span style='color:{ts_col}'>€{target_sav:,.0f}</span>",
+                                    unsafe_allow_html=True)
+                        inc_s_inp = c3.number_input("_", value=cur_inc_s, step=50.0,
+                            placeholder="—", key=f"inc_s_{row['month']}",
+                            label_visibility="collapsed", help="Your actual net income this month")
+                        inc_p_inp = c4.number_input("_", value=cur_inc_p, step=50.0,
+                            placeholder="—", key=f"inc_p_{row['month']}",
+                            label_visibility="collapsed", help="Partner actual net income this month")
+                        sav_inp = c5.number_input("_", value=cur_sav, step=50.0,
+                            placeholder="—", key=f"sav_{row['month']}",
+                            label_visibility="collapsed", help="Combined household savings this month")
+                        c6.markdown(f"<span style='color:#aaa'>€{fixed:,.0f}</span>",
+                                    unsafe_allow_html=True)
+                        inc_total = ((inc_s_inp or 0) + (inc_p_inp or 0)
+                                     if (inc_s_inp is not None or inc_p_inp is not None) else None)
+                        if inc_total is not None and sav_inp is not None:
+                            var_exp = inc_total - sav_inp - fixed
+                            vcol = "#e74c3c" if var_exp < 0 else "#2ecc71"
+                            c7.markdown(f"<span style='color:{vcol}'>€{var_exp:,.0f}</span>",
+                                        unsafe_allow_html=True)
+                        else:
+                            c7.markdown("<span style='color:#555'>—</span>", unsafe_allow_html=True)
+                        note_inp = c8.text_input("_", value=cur_note,
+                            key=f"note_{row['month']}", placeholder="note",
+                            label_visibility="collapsed")
+
+                    else:
+                        c1, c2, c3, c4, c5, c6, c7 = st.columns(col_w)
+                        c1.markdown(lbl_txt)
+                        ts_col = "#2ecc71" if target_sav >= 0 else "#e74c3c"
+                        c2.markdown(f"<span style='color:{ts_col}'>€{target_sav:,.0f}</span>",
+                                    unsafe_allow_html=True)
+                        inc_s_inp = c3.number_input("_", value=cur_inc_s, step=50.0,
+                            placeholder="—", key=f"inc_s_{row['month']}",
+                            label_visibility="collapsed")
+                        inc_p_inp = None
+                        sav_inp = c4.number_input("_", value=cur_sav, step=50.0,
+                            placeholder="—", key=f"sav_{row['month']}",
+                            label_visibility="collapsed")
+                        c5.markdown(f"<span style='color:#aaa'>€{fixed:,.0f}</span>",
+                                    unsafe_allow_html=True)
+                        if inc_s_inp is not None and sav_inp is not None:
+                            var_exp = inc_s_inp - sav_inp - fixed
+                            vcol = "#e74c3c" if var_exp < 0 else "#2ecc71"
+                            c6.markdown(f"<span style='color:{vcol}'>€{var_exp:,.0f}</span>",
+                                        unsafe_allow_html=True)
+                        else:
+                            c6.markdown("<span style='color:#555'>—</span>", unsafe_allow_html=True)
+                        note_inp = c7.text_input("_", value=cur_note,
+                            key=f"note_{row['month']}", placeholder="note",
+                            label_visibility="collapsed")
+
+                    updated_rows.append({
+                        "month":          row["month"],
+                        "inc_s_actual":   inc_s_inp,
+                        "inc_p_actual":   inc_p_inp,
+                        "savings_actual": sav_inp,
+                        "note":           note_inp,
+                    })
+
+                # ── Year-end summary bar inside the expander ──────────────────────
+                if yr_has_data or True:
+                    _yr_inp_s = sum(
+                        r["inc_s_actual"] for r in updated_rows
+                        if r["month"].startswith(yr_str) and r["inc_s_actual"] is not None
+                    )
+                    _yr_inp_p = sum(
+                        r["inc_p_actual"] for r in updated_rows
+                        if r["month"].startswith(yr_str) and r["inc_p_actual"] is not None
+                    ) if has_partner else 0
+                    _yr_inp_sav = sum(
+                        r["savings_actual"] for r in updated_rows
+                        if r["month"].startswith(yr_str) and r["savings_actual"] is not None
+                    )
+                    _yr_fc_inc = yr_rows["fc_inc_s"].sum() + (yr_rows["fc_inc_p"].sum() if has_partner else 0)
+                    _yr_fc_sav = yr_rows["fc_sav"].sum()
+                    st.markdown("---")
+                    _sc = st.columns(4 if has_partner else 3)
+                    _sc[0].metric(f"{yr_str} Income (You)", f"€{_yr_inp_s:,.0f}",
+                        delta=f"€{_yr_inp_s - yr_rows['fc_inc_s'].sum():+,.0f} vs forecast"
+                        if _yr_inp_s > 0 else None)
+                    if has_partner:
+                        _sc[1].metric(f"{yr_str} Income (Partner)", f"€{_yr_inp_p:,.0f}",
+                            delta=f"€{_yr_inp_p - yr_rows['fc_inc_p'].sum():+,.0f} vs forecast"
+                            if _yr_inp_p > 0 else None)
+                    _sc[-2].metric(f"{yr_str} Savings", f"€{_yr_inp_sav:,.0f}",
+                        delta=f"€{_yr_inp_sav - _yr_fc_sav:+,.0f} vs forecast"
+                        if _yr_inp_sav > 0 else None)
+                    _sc[-1].metric(f"{yr_str} Forecast Income", f"€{_yr_fc_inc:,.0f}",
+                        help="Combined forecast net income for the year")
+
+
+
+        # ── Buttons row ──────────────────────────────────────────────────────────
         st.divider()
+        btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([2, 2, 2, 4])
 
-        cl, cr = st.columns(2)
+        with btn_col1:
+            if st.button("➕ Add Month", help="Unlock one more future month for data entry"):
+                st.session_state["act_extra_months"] += 1
+                st.rerun()
 
-        # ── Chart 1: Net income & savings with buy/sell markers ───────────────
-        fig_c1 = go.Figure()
-        fig_c1.add_trace(go.Scatter(x=df_m_a["Date"], y=df_m_a["Total Net"],
-                                    name="Net Income A", line=dict(color="#2ecc71", width=2)))
-        fig_c1.add_trace(go.Scatter(x=df_m_b["Date"], y=df_m_b["Total Net"],
-                                    name="Net Income B", line=dict(color="#3498db", width=2, dash="dash")))
-        fig_c1.add_trace(go.Scatter(x=df_m_a["Date"], y=df_m_a["Net Saving"],
-                                    name="Savings A", line=dict(color="#f1c40f", width=1.5, dash="dot")))
-        fig_c1.add_trace(go.Scatter(x=df_m_b["Date"], y=df_m_b["Net Saving"],
-                                    name="Savings B", line=dict(color="#e67e22", width=1.5, dash="dot")))
-        add_events(fig_c1, pa, label="A", buy_y=0.88, sell_y=0.75,
-                   buy_color="#2ecc71", sell_color="#27ae60")
-        add_events(fig_c1, pb, label="B", buy_y=0.78, sell_y=0.65,
-                   buy_color="#3498db", sell_color="#2980b9")
-        fig_c1.update_layout(**chart_layout("Net Income & Savings: A vs B", height=420))
-        cl.plotly_chart(fig_c1, use_container_width=True, key="fig_ab_c1")
+        with btn_col2:
+            if st.button("💾 Save Actuals", type="primary",
+                         help="Saves your entries to this browser session. Download below to keep them permanently."):
+                # Build a DataFrame from what the user typed in the widgets
+                widget_df = pd.DataFrame(updated_rows)
+                for _c in ["inc_s_actual", "inc_p_actual", "savings_actual"]:
+                    widget_df[_c] = pd.to_numeric(widget_df[_c], errors="coerce")
 
-        # ── Chart 2: Total wealth with buy/sell markers ───────────────────────
-        fig_c2 = go.Figure()
-        fig_c2.add_trace(go.Scatter(x=df_w_a["Date"], y=df_w_a["Total Wealth (Buy)"],
-                                    name="Buy Wealth A", line=dict(color="#2ecc71", width=2.5)))
-        fig_c2.add_trace(go.Scatter(x=df_w_b["Date"], y=df_w_b["Total Wealth (Buy)"],
-                                    name="Buy Wealth B", line=dict(color="#3498db", width=2.5, dash="dash")))
-        fig_c2.add_trace(go.Scatter(x=df_w_a["Date"], y=df_w_a["Total Wealth (Rent)"],
-                                    name="Rent Wealth A", line=dict(color="#e74c3c", width=1.5, dash="dot")))
-        fig_c2.add_trace(go.Scatter(x=df_w_b["Date"], y=df_w_b["Total Wealth (Rent)"],
-                                    name="Rent Wealth B", line=dict(color="#e67e22", width=1.5, dash="dot")))
-        add_events(fig_c2, pa, label="A", buy_y=0.88, sell_y=0.75,
-                   buy_color="#2ecc71", sell_color="#27ae60")
-        add_events(fig_c2, pb, label="B", buy_y=0.78, sell_y=0.65,
-                   buy_color="#3498db", sell_color="#2980b9")
-        fig_c2.update_layout(**chart_layout("Total Wealth: A vs B", height=420))
-        cr.plotly_chart(fig_c2, use_container_width=True, key="fig_ab_c2")
+                # Merge with any already-saved data (preserves off-screen months)
+                existing = load_actuals()
+                if existing.empty or "month" not in existing.columns:
+                    merged = widget_df.copy()
+                else:
+                    off_screen = existing[~existing["month"].isin(widget_df["month"])]
+                    on_screen  = widget_df.copy()
+                    if "note" in existing.columns:
+                        disk_notes = existing.set_index("month")["note"]
+                        on_screen["note"] = on_screen.apply(
+                            lambda r: (disk_notes.get(r["month"], "") or "")
+                            if not r["note"] else r["note"],
+                            axis=1,
+                        )
+                    merged = pd.concat([off_screen, on_screen], ignore_index=True)
 
-        # ── Chart 3: Expense breakdown (mid-period, all categories) ──────────
-        fig_c3 = go.Figure()
-        cats = ["Housing (net MRI)", "Health Ins.", "Car", "Groceries",
-                "Utilities", "Phone & Subs", "Gym", "Dog", "Other"]
-        midx_a = min(30, len(df_m_a)-1); midx_b = min(30, len(df_m_b)-1)
-        m30a = df_m_a.iloc[midx_a]; m30b = df_m_b.iloc[midx_b]
-        va = [max(m30a["Housing Cost"] - m30a["MRI Benefit"], 0),
-              pa["hi"], pa["cf"]+pa["ci"], pa["gr"],
-              pa.get("utilities",0), pa.get("phone",0)+pa.get("subscriptions",0),
-              pa.get("gym",0), pa.get("dog",0), pa["ot"]]
-        vb = [max(m30b["Housing Cost"] - m30b["MRI Benefit"], 0),
-              pb["hi"], pb["cf"]+pb["ci"], pb["gr"],
-              pb.get("utilities",0), pb.get("phone",0)+pb.get("subscriptions",0),
-              pb.get("gym",0), pb.get("dog",0), pb["ot"]]
-        fig_c3.add_trace(go.Bar(name=_sa_name, x=cats, y=va, marker_color="#2ecc71"))
-        fig_c3.add_trace(go.Bar(name=_sb_name, x=cats, y=vb, marker_color="#3498db"))
-        fig_c3.update_layout(barmode="group",
-                              **chart_layout("Monthly Expense Breakdown: A vs B (mid-period)", height=380))
-        st.plotly_chart(fig_c3, use_container_width=True, key="fig_ab_c3")
+                # Drop entirely empty rows
+                merged = merged[
+                    merged["inc_s_actual"].notna() |
+                    merged["inc_p_actual"].notna() |
+                    merged["savings_actual"].notna()
+                ]
+                merged = merged.sort_values("month").reset_index(drop=True)
+                save_actuals(merged)
+                st.success(f"✅ {len(merged)} months saved to this session. Download below to keep permanently.")
+                st.rerun()
 
-        # ── Chart 4: Home equity trajectory ──────────────────────────────────
-        fig_c4 = go.Figure()
-        fig_c4.add_trace(go.Scatter(x=df_w_a["Date"], y=df_w_a["Home Equity"],
-                                    name="Home Equity A", line=dict(color="#f1c40f", width=2),
-                                    fill="tozeroy", fillcolor="rgba(241,196,15,0.06)"))
-        fig_c4.add_trace(go.Scatter(x=df_w_b["Date"], y=df_w_b["Home Equity"],
-                                    name="Home Equity B", line=dict(color="#e67e22", width=2, dash="dash"),
-                                    fill="tozeroy", fillcolor="rgba(230,126,34,0.06)"))
-        add_events(fig_c4, pa, label="A", buy_y=0.88, sell_y=0.75,
-                   buy_color="#2ecc71", sell_color="#27ae60")
-        add_events(fig_c4, pb, label="B", buy_y=0.78, sell_y=0.65,
-                   buy_color="#3498db", sell_color="#2980b9")
-        fig_c4.update_layout(**chart_layout("Home Equity Over Time: A vs B", height=360))
-        st.plotly_chart(fig_c4, use_container_width=True, key="fig_ab_c4")
+        # Download actuals CSV
+        _act_for_dl = load_actuals()
+        with btn_col3:
+            st.download_button(
+                label="⬇️ Download actuals",
+                data=actuals_to_csv_bytes(_act_for_dl) if not _act_for_dl.empty else b"month,inc_s_actual,inc_p_actual,savings_actual,note\n",
+                file_name="dutch_dashboard_actuals.csv",
+                mime="text/csv",
+                use_container_width=True,
+                help="Download your actuals data as a CSV to keep it permanently. Re-upload it next session.",
+            )
 
-        # ── How are these numbers calculated? (bottom of tab) ─────────────────
+        # Upload actuals CSV — shown below the button row for space
+        st.markdown("**⬆️ Restore actuals from file**")
+        _uploaded_actuals = st.file_uploader(
+            "Upload actuals CSV",
+            type=["csv"],
+            key="actuals_upload",
+            label_visibility="collapsed",
+            help="Upload a previously downloaded actuals CSV to restore your data.",
+        )
+        if _uploaded_actuals is not None:
+            _act_restored = actuals_from_uploaded_file(_uploaded_actuals)
+            save_actuals(_act_restored)
+            st.success(f"✅ {len(_act_restored)} months of actuals restored from file.")
+            st.rerun()
+
+        # ── Charts ────────────────────────────────────────────────────────────────
+        actual_data = pd.DataFrame(updated_rows)
+        for col_n in ["inc_s_actual","inc_p_actual","savings_actual"]:
+            actual_data[col_n] = pd.to_numeric(actual_data[col_n], errors="coerce")
+        actual_data = actual_data.merge(fc_df, on="month", how="left")
+        actual_data["month_dt"]    = pd.to_datetime(actual_data["month"] + "-01")
+        actual_data["inc_combined"] = actual_data["inc_s_actual"].fillna(0) + \
+                                      actual_data["inc_p_actual"].fillna(0)
+        actual_data["inc_combined"] = actual_data["inc_combined"].where(
+            actual_data["inc_s_actual"].notna() | actual_data["inc_p_actual"].notna(), other=float("nan"))
+        actual_data["var_exp"] = actual_data["inc_combined"] - \
+                                 actual_data["savings_actual"] - \
+                                 actual_data["fc_fixed"]
+
+        has_actuals = actual_data["savings_actual"].notna().any() or \
+                      actual_data["inc_s_actual"].notna().any()
+
+        if has_actuals:
+            st.divider()
+            st.subheader("📊 Actuals vs Forecast")
+
+            # Income chart: show all months that have any income data
+            a_inc  = actual_data.dropna(subset=["inc_s_actual"], how="all").copy()
+            # Savings chart: show months with savings data
+            a_f    = actual_data.dropna(subset=["savings_actual"]).copy()
+            # Full breakdown: need both income and savings
+            a_full = actual_data.dropna(subset=["savings_actual","inc_combined"]).copy()
+
+            # ── Chart 1: Income per person vs forecast ────────────────────────────
+            cl, cr = st.columns(2)
+            fig_a0 = go.Figure()
+            if has_partner:
+                # Forecast bars shown for all months with any actual income
+                _months_with_inc = actual_data[
+                    actual_data["inc_s_actual"].notna() | actual_data["inc_p_actual"].notna()
+                ]
+                fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"], y=_months_with_inc["fc_inc_s"],
+                                        name=f"{p_act.get('name_s','You')} (fc)",
+                                        marker_color="#3498db", opacity=0.45))
+                fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"], y=_months_with_inc["fc_inc_p"],
+                                        name=f"{p_act.get('name_p','Partner')} (fc)",
+                                        marker_color="#8e44ad", opacity=0.45))
+                if actual_data["inc_s_actual"].notna().any():
+                    fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"],
+                                            y=_months_with_inc["inc_s_actual"],
+                                            name=f"{p_act.get('name_s','You')} (act)",
+                                            marker_color="#2ecc71"))
+                if actual_data["inc_p_actual"].notna().any():
+                    fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"],
+                                            y=_months_with_inc["inc_p_actual"],
+                                            name=f"{p_act.get('name_p','Partner')} (act)",
+                                            marker_color="#f1c40f"))
+                fig_a0.update_layout(barmode="group",
+                                      **chart_layout("Monthly Income per Person: Actual vs Forecast",
+                                                     height=340))
+            else:
+                _months_with_inc = actual_data[actual_data["inc_s_actual"].notna()]
+                fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"], y=_months_with_inc["fc_inc_s"],
+                                        name="Income (fc)", marker_color="#3498db", opacity=0.5))
+                if actual_data["inc_s_actual"].notna().any():
+                    fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"],
+                                            y=_months_with_inc["inc_s_actual"],
+                                            name="Income (act)", marker_color="#2ecc71"))
+                fig_a0.update_layout(barmode="overlay",
+                                      **chart_layout("Monthly Income: Actual vs Forecast", height=340))
+            cl.plotly_chart(fig_a0, use_container_width=True, key="fig_act_0")
+
+            # ── Chart 2: Savings actual vs forecast ──────────────────────────────
+            fig_a1 = go.Figure()
+            fig_a1.add_trace(go.Bar(x=a_f["month_dt"], y=a_f["fc_sav"],
+                                    name="Savings", marker_color="#3498db", opacity=0.5))
+            fig_a1.add_trace(go.Bar(x=a_f["month_dt"], y=a_f["savings_actual"],
+                                    name="Savings (act)", marker_color="#2ecc71"))
+            fig_a1.update_layout(barmode="overlay",
+                                  **chart_layout("Monthly Savings: Actual vs Forecast", height=340))
+            cr.plotly_chart(fig_a1, use_container_width=True, key="fig_act_1")
+
+            cl2, cr2 = st.columns(2)
+
+            # ── Chart 3: Stacked breakdown ────────────────────────────────────────
+            if not a_full.empty:
+                a_full["var_pos"] = a_full["var_exp"].clip(lower=0)
+                fig_a2 = go.Figure()
+                fig_a2.add_trace(go.Bar(x=a_full["month_dt"], y=a_full["fc_fixed"],
+                                        name="Fixed Exp.", marker_color="#e74c3c"))
+                fig_a2.add_trace(go.Bar(x=a_full["month_dt"], y=a_full["var_pos"],
+                                        name="Var. Exp.", marker_color="#e67e22"))
+                fig_a2.add_trace(go.Bar(x=a_full["month_dt"], y=a_full["savings_actual"],
+                                        name="Savings", marker_color="#2ecc71"))
+                fig_a2.add_trace(go.Scatter(x=a_full["month_dt"], y=a_full["inc_combined"],
+                                            name="Combined Income", mode="lines+markers",
+                                            line=dict(color="white", width=2)))
+                if has_partner:
+                    fig_a2.add_trace(go.Scatter(x=a_full["month_dt"], y=a_full["inc_s_actual"],
+                                                name=f"{p_act.get('name_s','You')} income",
+                                                mode="lines", line=dict(color="#2ecc71", width=1.5, dash="dot")))
+                fig_a2.update_layout(barmode="stack",
+                                      **chart_layout("Monthly: Fixed + Variable + Savings vs Income",
+                                                     height=380))
+                cl2.plotly_chart(fig_a2, use_container_width=True, key="fig_act_2")
+
+                # ── Chart 4: Variable expenses ────────────────────────────────────
+                fig_a3 = go.Figure()
+                fig_a3.add_trace(go.Bar(
+                    x=a_full["month_dt"], y=a_full["var_exp"],
+                    name="Var. Exp.",
+                    marker_color=["#e74c3c" if v < 0 else "#e67e22" for v in a_full["var_exp"]]
+                ))
+                avg_var = a_full["var_exp"].mean()
+                fig_a3.add_hline(y=avg_var, line_color="#f1c40f", line_dash="dash",
+                                 annotation_text="" if st.session_state.get("narrow_mode") else f"avg €{avg_var:,.0f}",
+                                 annotation_position="top right")
+                fig_a3.add_hline(y=0, line_color="gray", line_dash="dot")
+                fig_a3.update_layout(**chart_layout("Variable (Discretionary) Expenses per Month",
+                                                    height=380))
+                cr2.plotly_chart(fig_a3, use_container_width=True, key="fig_act_3")
+            else:
+                cl2.info("Enter both income and savings for full breakdown charts.", icon="📝")
+
+            # ── Cumulative savings ────────────────────────────────────────────────
+            a_f = a_f[a_f["month"] <= today_str].copy()   # exclude future months from cumulative
+            if not a_f.empty:
+                a_f["cumul_actual"]   = a_f["savings_actual"].cumsum()
+                a_f["cumul_forecast"] = a_f["fc_sav"].cumsum()
+                diff     = a_f["cumul_actual"].iloc[-1] - a_f["cumul_forecast"].iloc[-1]
+                sign_lbl = "ahead of" if diff >= 0 else "behind"
+                fig_a4 = go.Figure()
+                fig_a4.add_trace(go.Scatter(x=a_f["month_dt"], y=a_f["cumul_actual"],
+                                            name="Actual",
+                                            line=dict(color="#2ecc71", width=2.5)))
+                fig_a4.add_trace(go.Scatter(x=a_f["month_dt"], y=a_f["cumul_forecast"],
+                                            name="Forecast",
+                                            line=dict(color="#3498db", width=2, dash="dash")))
+                fig_a4.update_layout(**chart_layout(
+                    f"Cumulative Savings — €{abs(diff):,.0f} {sign_lbl} forecast", height=320))
+                st.plotly_chart(fig_a4, use_container_width=True, key="fig_act_4")
+
+            # ── Net worth tracker ────────────────────────────────────────────────
+            _nws = p_act.get("net_worth_start", 0)
+            if not a_f.empty:
+                a_f["net_worth"] = _nws + a_f["cumul_actual"]
+                a_f["net_worth_fc"] = _nws + a_f["cumul_forecast"]
+                _nw_latest = a_f["net_worth"].iloc[-1]
+                _nw_fc_latest = a_f["net_worth_fc"].iloc[-1]
+                _nw_delta = _nw_latest - _nw_fc_latest
+                fig_nw = go.Figure()
+                fig_nw.add_trace(go.Scatter(
+                    x=a_f["month_dt"], y=a_f["net_worth"],
+                    name="Actual",
+                    line=dict(color="#f1c40f", width=2.5),
+                    fill="tozeroy", fillcolor="rgba(241,196,15,0.07)"))
+                fig_nw.add_trace(go.Scatter(
+                    x=a_f["month_dt"], y=a_f["net_worth_fc"],
+                    name="Forecast",
+                    line=dict(color="#95a5a6", width=1.5, dash="dash")))
+                fig_nw.update_layout(**chart_layout(
+                    f"Net Worth — €{_nw_latest:,.0f} actual · "
+                    f"{'ahead of' if _nw_delta >= 0 else 'behind'} forecast by €{abs(_nw_delta):,.0f}",
+                    "€", height=300))
+                st.plotly_chart(fig_nw, use_container_width=True, key="fig_act_nw")
+                _nw_col1, _nw_col2, _nw_col3 = st.columns(3)
+                _nw_col1.metric("Starting Net Worth", f"€{_nws:,.0f}",
+                    help="Set in ⚙️ Setup → 📈 Projection Assumptions.")
+                _nw_col2.metric("Current Net Worth (actual)", f"€{_nw_latest:,.0f}",
+                    delta=f"€{_nw_delta:+,.0f} vs forecast")
+                _nw_col3.metric("Net Worth Forecast", f"€{_nw_fc_latest:,.0f}")
+
+            # ── Net Worth Tracker ────────────────────────────────────────────────
+            _nws = p_act.get("net_worth_start", 0)
+            if _nws > 0 and not a_f.empty:
+                st.divider()
+                st.subheader("💎 Net Worth Tracker")
+                st.caption(
+                    f"Starting net worth **€{_nws:,.0f}** (from Setup → Projection Assumptions) "
+                    "plus cumulative savings to date. Liquid wealth only — "
+                    "home equity from the Buy vs Rent tab adds on top."
+                )
+                a_nw = a_f.copy()
+                a_nw["nw_actual"]   = _nws + a_nw["cumul_actual"]
+                a_nw["nw_forecast"] = _nws + a_nw["cumul_forecast"]
+                _cur_nw   = a_nw["nw_actual"].iloc[-1]
+                _fc_nw    = a_nw["nw_forecast"].iloc[-1]
+                _nw_delta = _cur_nw - _fc_nw
+                _nw_cols  = st.columns(3)
+                _nw_cols[0].metric("Current Net Worth (liquid)", f"€{_cur_nw:,.0f}",
+                    delta=f"€{_nw_delta:+,.0f} vs forecast",
+                    help="Starting net worth + cumulative actual savings entered in this tab.")
+                _nw_cols[1].metric("Forecast Net Worth (to date)", f"€{_fc_nw:,.0f}",
+                    help="Starting net worth + cumulative forecast savings for the same period.")
+                _nw_cols[2].metric("Months Tracked", len(a_nw),
+                    help="Number of months with actual savings data entered.")
+                fig_nw = go.Figure()
+                fig_nw.add_trace(go.Scatter(
+                    x=a_nw["month_dt"], y=a_nw["nw_actual"],
+                    name="Actual", mode="lines+markers",
+                    line=dict(color="#2ecc71", width=2.5), marker=dict(size=6)
+                ))
+                fig_nw.add_trace(go.Scatter(
+                    x=a_nw["month_dt"], y=a_nw["nw_forecast"],
+                    name="Forecast", mode="lines",
+                    line=dict(color="#3498db", width=2, dash="dash")
+                ))
+                fig_nw.add_hline(y=_nws, line_color="#7f8c8d", line_dash="dot",
+                    annotation_text="" if st.session_state.get("narrow_mode") else f"Start €{_nws:,.0f}", annotation_position="bottom right")
+                fig_nw.update_layout(**chart_layout(
+                    f"Net Worth Over Time — starting €{_nws:,.0f}", "€", height=340))
+                st.plotly_chart(fig_nw, use_container_width=True, key="fig_act_nw")
+            elif _nws == 0 and not a_f.empty:
+                st.info(
+                    "💡 Set a **Starting net worth** in ⚙️ Setup → Projection Assumptions "
+                    "to enable the net worth tracker here.", icon="💎"
+                )
+
+            # ── KPI summary ───────────────────────────────────────────────────────
+            kpi_cols = st.columns(5 if not has_partner else 6)
+            kpi_cols[0].metric("Months Entered", len(a_f))
+            if a_f["inc_s_actual"].notna().any():
+                kpi_cols[1].metric(f"Avg {p_act.get('name_s','Your')} Income",
+                                   f"€{a_f['inc_s_actual'].mean():,.0f}",
+                                   delta=f"€{a_f['inc_s_actual'].mean()-a_f['fc_inc_s'].mean():,.0f} vs forecast")
+            else:
+                kpi_cols[1].metric(f"Forecast {p_act.get('name_s','Your')} Income",
+                                   f"€{a_f['fc_inc_s'].mean():,.0f}")
+            idx = 2
+            if has_partner:
+                if a_f["inc_p_actual"].notna().any():
+                    kpi_cols[idx].metric(f"Avg {p_act.get('name_p','Partner')} Income",
+                                         f"€{a_f['inc_p_actual'].mean():,.0f}",
+                                         delta=f"€{a_f['inc_p_actual'].mean()-a_f['fc_inc_p'].mean():,.0f} vs forecast")
+                else:
+                    kpi_cols[idx].metric(f"Forecast {p_act.get('name_p','Partner')} Income",
+                                         f"€{a_f['fc_inc_p'].mean():,.0f}")
+                idx += 1
+            kpi_cols[idx].metric("Avg Savings/mo", f"€{a_f['savings_actual'].mean():,.0f}",
+                                 delta=f"€{a_f['savings_actual'].mean()-a_f['fc_sav'].mean():,.0f} vs forecast")
+            kpi_cols[idx+1].metric("Avg Fixed/mo", f"€{a_f['fc_fixed'].mean():,.0f}")
+            if not a_full.empty:
+                kpi_cols[idx+2].metric("Avg Variable/mo", f"€{a_full['var_exp'].mean():,.0f}",
+                                       help="Combined income − savings − fixed expenses")
+            else:
+                kpi_cols[idx+2].metric("Avg Variable/mo", "—")
+        else:
+            st.info("Enter actual income and savings above, then click **Save Actuals** to see charts.", icon="📝")
+
+        # ── How are these numbers calculated? (bottom of tab) ─────────────────────
         st.divider()
         with st.expander("📖 How are these numbers calculated?", expanded=False):
             st.markdown("""
-### Scenario A/B Comparison
+    ### Actuals vs Forecast — How the numbers work
 
-Both scenarios run the full financial model independently with their own inputs — income, tax, mortgage, savings, appreciation, and Box 3 wealth tax are all computed separately per scenario.
+    #### Data you enter
+    - **Actual Income (You / Partner)** — your real net monthly take-home pay. This should match what lands in your bank account. Import directly from your ING bank statement (Credit rows) using the bank importer above, or type it manually.
+    - **Actual Savings** — the total amount you actually saved or transferred to savings that month.
 
-**Chart guide:**
-- **Net Income & Savings** — monthly take-home pay and savings surplus per scenario. Differences arise from income levels, ruling periods, salary growth, or expense differences.
-- **Total Wealth** — total net worth over time for buy and rent within each scenario. The crossover point (buy beats rent) may differ if house prices, rates, or appreciation rates differ between scenarios.
-- **Expense Breakdown** — side-by-side bar at month ~30 for each expense category. Quickly shows where one scenario costs more.
-- **Home Equity** — equity build-up under each scenario's mortgage. Driven by house price, down payment %, appreciation rate, and mortgage rate.
+    #### Auto-computed columns
+    - **Target Savings** *(green/red)* — the forecast combined household savings for that month, calculated from your Setup inputs. Green = positive surplus, red = deficit.
+    - **Fixed** — your fixed monthly costs pulled directly from Setup (housing + all recurring expenses). This number changes when you switch from renting to owning.
+    - **Variable** — the discretionary spend derived as:
+      ```
+      Variable = (Your Income + Partner Income) − Savings − Fixed Expenses
+      ```
+      This is everything not accounted for by fixed costs or savings: food out, clothing, holidays, entertainment. A negative number means income didn't cover fixed costs plus your target savings.
 
-**"What changed?" diff table** lists every input that differs between A and B — use this to understand exactly what is driving any outcome difference.
+    #### Year summaries
+    Each year section shows:
+    - **Total income** received (You + Partner) vs the annual forecast
+    - **Total savings** vs the annual forecast savings target
 
-**Tip:** Set Scenario A as your base case and use Scenario B as a what-if — e.g., buying later, a different mortgage rate, or modelling a house sale.
+    #### Charts (below the table)
+    - **Income chart** — actual income per person vs the forecast, by month. Useful for spotting income fluctuations or bonus months.
+    - **Savings chart** — actual monthly savings vs forecast target.
+    - **Expense breakdown** — shows how income splits across fixed costs, variable spending, and savings.
+    - **Cumulative savings** — running total of actual savings vs cumulative forecast. Drift above or below the line shows whether you're ahead or behind your target.
+    - **Net Worth tracker** — starting net worth (from Setup) plus cumulative savings. Requires a starting net worth value in Setup → Projection Assumptions.
             """)
 
-# ════════════════════════════════════════════════════════════════════════════════
-# TAB 4 — SENSITIVITY
-# ════════════════════════════════════════════════════════════════════════════════
-
-# ════════════════════════════════════════════════════════════════════════════════
-# TAB 5 — ACTUALS
-# ════════════════════════════════════════════════════════════════════════════════
-
-with tabs[5]:
-    st.subheader("📝 Actuals vs Forecast")
-
-    p_act     = pa
-    has_partner = bool(p_act.get("partner", False))
-    actuals_df  = load_actuals()
-
-    # ── Date range from Setup ─────────────────────────────────────────────────
-    hist_start_str = p_act.get("hist_start", "2026-01")
-    hist_end_str   = p_act.get("hist_end",   pd.Timestamp.today().strftime("%Y-%m"))
-    today_str      = pd.Timestamp.today().strftime("%Y-%m")
-
-    # Clamp end to not exceed hist_end
-    st.info(
-        f"📅 Showing actuals for **{hist_start_str}** → **{hist_end_str}** "
-        f"as configured in the ⚙️ Setup tab → 📅 Historic Data Range. "
-        f"Use **➕ Add Month** to extend beyond this range.",
-        icon="📋"
-    )
-
-    # ── Session state: extra months beyond hist_end ───────────────────────────
-    if "act_extra_months" not in st.session_state:
-        st.session_state["act_extra_months"] = 0
-
-    # ── Build month range: hist_start → hist_end + extras ────────────────────
-    hist_start_ts = pd.Timestamp(hist_start_str + "-01")
-    hist_end_ts   = pd.Timestamp(hist_end_str   + "-01")
-    extra         = st.session_state["act_extra_months"]
-
-    # Months from hist_start to hist_end
-    all_months = pd.date_range(start=hist_start_ts, end=hist_end_ts, freq="MS")
-
-    # Add any extra months unlocked via ➕ Add Month
-    if extra > 0:
-        extra_dates = pd.date_range(
-            start=hist_end_ts + pd.DateOffset(months=1), periods=extra, freq="MS")
-        all_months = all_months.append(extra_dates)
-
-    month_strs  = [d.strftime("%Y-%m") for d in all_months]
-    month_labels = [d.strftime("%b %Y") for d in all_months]
-
-    # ── Merge saved actuals ────────────────────────────────────────────────────
-    base_act = pd.DataFrame({"month": month_strs, "label": month_labels})
-    if not actuals_df.empty and "month" in actuals_df.columns:
-        saved_cols = [c for c in ["month","inc_s_actual","inc_p_actual","savings_actual","note"]
-                      if c in actuals_df.columns]
-        base_act = base_act.merge(actuals_df[saved_cols], on="month", how="left")
-    for col_name in ["inc_s_actual","inc_p_actual","savings_actual"]:
-        if col_name not in base_act.columns: base_act[col_name] = None
-        base_act[col_name] = pd.to_numeric(base_act[col_name], errors="coerce")
-    if "note" not in base_act.columns: base_act["note"] = ""
-    base_act["note"] = base_act["note"].fillna("")
-
-    # ── Compute forecast for every month ──────────────────────────────────────
-    fc_rows = []
-    for dt in all_months:
-        yr = dt.year; mo_n = dt.month
-        # For months beyond projection window, use last projection year's settings
-        yr_tax = min(yr, 2030)
-        a30_s  = p_act.get("ruling_s", True)  and p_act.get("rs_s", p_act["rs"]) <= yr < p_act.get("re_s", p_act["re"])
-        a30_p  = p_act.get("ruling_p", False) and p_act.get("rs_p", p_act["rs"]) <= yr < p_act.get("re_p", p_act["re"])
-        _act_rates_s = ruling_rate(p_act.get("rs_s_start", p_act.get("rs_s", p_act["rs"])))
-        _act_rates_p = ruling_rate(p_act.get("rs_p_start", p_act.get("rs_p", p_act["rs"])))
-        _re_s_act = _act_rates_s.get(yr, 0.30) if a30_s else 0.30
-        _re_p_act = _act_rates_p.get(yr, 0.30) if a30_p else 0.30
-        sg     = p_act.get("sal_growth", 0.0)
-        sg_p   = p_act.get("sal_growth_p", sg)
-        yrs_e  = yr - 2026
-        inc_s_adj = p_act["inc_s"] * (1 + sg)   ** yrs_e
-        inc_p_adj = p_act["inc_p"] * (1 + sg_p) ** yrs_e
-        nm_s  = net_monthly_calc(inc_s_adj, yr_tax, a30_s, _re_s_act)
-        nm_p  = net_monthly_calc(inc_p_adj, yr_tax, a30_p, _re_p_act) if has_partner else 0
-        gross = inc_s_adj + (inc_p_adj if has_partner else 0)
-        zts   = zorgtoeslag(gross, has_partner)
-        owns  = (yr > p_act["by"]) or (yr == p_act["by"] and mo_n >= p_act["bm"])
-        housing = mort_payment(p_act["house_price"], p_act["dp"], p_act["mort_rate"]) \
-                  if owns else p_act["rent"]
-        recurring = (p_act["hi"] + p_act["cf"] + p_act["ci"] + p_act["gr"] + p_act["ot"]
-                     + p_act.get("utilities",0) + p_act.get("phone",0)
-                     + p_act.get("subscriptions",0) + p_act.get("gym",0) + p_act.get("dog",0))
-        fixed_total = housing + recurring
-        fc_rows.append({
-            "month":          dt.strftime("%Y-%m"),
-            "fc_inc_s":       round(nm_s),
-            "fc_inc_p":       round(nm_p),
-            "fc_inc_total":   round(nm_s + nm_p),
-            "fc_housing":     round(housing),
-            "fc_recurring":   round(recurring),
-            "fc_fixed":       round(fixed_total),
-            "fc_zts":         round(zts),
-            "fc_sav":         round(nm_s + nm_p + zts - fixed_total),
-        })
-    fc_df    = pd.DataFrame(fc_rows)
-    base_act = base_act.merge(fc_df, on="month", how="left")
-
-    # All months in range are editable (bounded by hist_start/hist_end + extras)
-    editable = base_act.copy()
-
-    # ── Fixed expenses breakdown ───────────────────────────────────────────────
-    with st.expander("📋 Fixed Expenses breakdown (from Setup)", expanded=False):
-        _today_ts = pd.Timestamp.today()
-        owns_now = (_today_ts.year > p_act["by"]) or                    (_today_ts.year == p_act["by"] and _today_ts.month >= p_act["bm"])
-        h_now = mort_payment(p_act["house_price"], p_act["dp"], p_act["mort_rate"]) \
-                if owns_now else p_act["rent"]
-        fe_items = {
-            "Housing (rent/mortgage)": h_now,
-            "Health insurance":        p_act["hi"],
-            "Car (fuel + insurance)":  p_act["cf"] + p_act["ci"],
-            "Groceries":               p_act["gr"],
-            "Utilities":               p_act.get("utilities", 0),
-            "Phone & subscriptions":   p_act.get("phone",0) + p_act.get("subscriptions",0),
-            "Gym":                     p_act.get("gym", 0),
-            "Dog":                     p_act.get("dog", 0),
-            "Other":                   p_act["ot"],
-        }
-        fe_rows = [{"Category": k, "€/month": f"€{v:,.0f}"}
-                   for k, v in fe_items.items() if v > 0]
-        fe_rows.append({"Category": "TOTAL", "€/month": f"€{sum(fe_items.values()):,.0f}"})
-        st.dataframe(pd.DataFrame(fe_rows), use_container_width=True, hide_index=True)
-        st.caption("Change these in the ⚙️ Setup tab → 🧾 Monthly Expenses.")
-
-    # ── Bank statement importer ───────────────────────────────────────────────
-    with st.expander("🏦 Import income from Bank Statement (optional)", expanded=False):
-        st.markdown(
-            """
-Upload your **ING bank statement CSV** (semicolon-delimited export).  
-The importer reads only **Credit** rows and sums them per calendar month.  
-The totals are treated as **income** and fill the *Actual Income* columns in the table below.  
-You can still edit every cell manually after importing.
-
-> **Columns expected:** `Date ; Name / Description ; Account ; Counterparty ; Code ;`  
-> `Debit/credit ; Amount (EUR) ; Transaction type ; Notifications`
-            """
-        )
-        imp_col1, imp_col2 = st.columns(2)
-        with imp_col1:
-            st.markdown(f"**Your statement** *(fills: Actual You income)*")
-            bank_file_s = st.file_uploader(
-                "Your bank statement (.csv)",
-                type=["csv"],
-                key="bank_stmt_you",
-                label_visibility="collapsed",
-            )
-        with imp_col2:
-            st.markdown(f"**Partner's statement** *(fills: Actual Partner income)*")
-            bank_file_p = st.file_uploader(
-                "Partner bank statement (.csv)",
-                type=["csv"],
-                key="bank_stmt_partner",
-                label_visibility="collapsed",
-                disabled=not has_partner,
-                help="Enable partner in Setup first." if not has_partner else "",
-            )
-
-        parsed_s, parsed_p = None, None
-        err_msgs = []
-
-        if bank_file_s:
-            try:
-                parsed_s = parse_bank_statement(bank_file_s)
-                st.success(f"✅ Your statement: {len(parsed_s)} month(s) of Credit entries parsed.", icon="🏦")
-                prev_s = parsed_s.copy()
-                prev_s["amount"] = prev_s["amount"].apply(lambda x: f"€{x:,.2f}")
-                prev_s.columns = ["Month", "Credit Total (income)"]
-                st.dataframe(prev_s, use_container_width=True, hide_index=True)
-            except Exception as exc:
-                err_msgs.append(f"Your statement: {exc}")
-
-        if bank_file_p and has_partner:
-            try:
-                parsed_p = parse_bank_statement(bank_file_p)
-                st.success(f"✅ Partner statement: {len(parsed_p)} month(s) of Credit entries parsed.", icon="🏦")
-                prev_p = parsed_p.copy()
-                prev_p["amount"] = prev_p["amount"].apply(lambda x: f"€{x:,.2f}")
-                prev_p.columns = ["Month", "Credit Total (income)"]
-                st.dataframe(prev_p, use_container_width=True, hide_index=True)
-            except Exception as exc:
-                err_msgs.append(f"Partner statement: {exc}")
-
-        for em in err_msgs:
-            st.error(f"❌ {em}")
-
-        if (parsed_s is not None or parsed_p is not None):
-            if st.button("📥 Apply to table (income columns)", type="primary"):
-                existing = load_actuals()  # always returns DataFrame with all _ACTUALS_COLS
-
-                def _apply_income(existing_df, monthly_df, col):
-                    for _, row in monthly_df.iterrows():
-                        mask = existing_df["month"] == row["month"]
-                        if mask.any():
-                            existing_df.loc[mask, col] = row["amount"]
-                        else:
-                            new_row = {c: None for c in _ACTUALS_COLS}
-                            new_row["month"] = row["month"]
-                            new_row["note"]  = ""
-                            new_row[col]     = row["amount"]
-                            existing_df = pd.concat(
-                                [existing_df, pd.DataFrame([new_row])], ignore_index=True
-                            )
-                    return existing_df
-
-                if parsed_s is not None:
-                    existing = _apply_income(existing, parsed_s, "inc_s_actual")
-                if parsed_p is not None:
-                    existing = _apply_income(existing, parsed_p, "inc_p_actual")
-
-                existing = existing.sort_values("month").reset_index(drop=True)
-                save_actuals(existing)
-                st.success("✅ Income columns updated from bank statement(s). Table refreshed below.")
-                st.rerun()
-
-    # ── Input grid — grouped by year ─────────────────────────────────────────
-    st.markdown("### ✏️ Enter Monthly Actuals")
-
-    if has_partner:
-        col_w   = [1.4, 1.3, 1.3, 1.3, 1.3, 1.2, 1.3, 1.6]
-        headers = ["**Month**", "**Target**",
-                   "**You (€)**", "**Partner (€)**",
-                   "**Savings (€)**", "**Fixed**", "**Variable**", "**Note**"]
-    else:
-        col_w   = [1.5, 1.5, 1.8, 1.5, 1.5, 1.5, 2.0]
-        headers = ["**Month**", "**Target**",
-                   "**Income (€)**", "**Savings (€)**",
-                   "**Fixed**", "**Variable**", "**Note**"]
-
-    # Group months by year
-    editable["year"] = editable["month"].str[:4]
-    years_in_range   = editable["year"].unique().tolist()
-    current_year     = pd.Timestamp.today().strftime("%Y")
-
-    updated_rows = []
-
-    for yr_str in years_in_range:
-        yr_rows = editable[editable["year"] == yr_str]
-
-        # ── Year summary for the expander label ───────────────────────────────
-        yr_inc_s = yr_rows["inc_s_actual"].sum(skipna=True)
-        yr_inc_p = yr_rows["inc_p_actual"].sum(skipna=True) if has_partner else 0
-        yr_sav   = yr_rows["savings_actual"].sum(skipna=True)
-        yr_has_data = (
-            yr_rows["inc_s_actual"].notna().any() or
-            yr_rows["inc_p_actual"].notna().any() or
-            yr_rows["savings_actual"].notna().any()
-        )
-        _yr_inc_total = yr_inc_s + yr_inc_p
-        if yr_has_data:
-            _yr_label_detail = (
-                f"  ·  Income: €{_yr_inc_total:,.0f}"
-                + (f"  ·  Savings: €{yr_sav:,.0f}" if yr_rows["savings_actual"].notna().any() else "")
-            )
-        else:
-            _yr_label_detail = "  ·  no data entered yet"
-
-        # All years collapsed by default — user opens the year they want to edit
-        _yr_open = False
-
-        with st.expander(f"📅 **{yr_str}**{_yr_label_detail}", expanded=_yr_open):
-            # Column headers inside each year block
-            hcols = st.columns(col_w)
-            for hcol, hdr in zip(hcols, headers):
-                hcol.markdown(hdr)
-
-            for _, row in yr_rows.iterrows():
-                is_future = row["month"] > today_str
-                cur_inc_s  = float(row["inc_s_actual"]) if pd.notna(row["inc_s_actual"]) else None
-                cur_inc_p  = float(row["inc_p_actual"]) if pd.notna(row["inc_p_actual"]) else None
-                cur_sav    = float(row["savings_actual"]) if pd.notna(row["savings_actual"]) else None
-                cur_note   = row["note"] if row["note"] else ""
-                fixed      = row["fc_fixed"]
-                target_sav = row["fc_sav"]
-                lbl_txt    = f"**{row['label']}**" + (" 🔮" if is_future else "")
-
-                if has_partner:
-                    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(col_w)
-                    c1.markdown(lbl_txt)
-                    ts_col = "#2ecc71" if target_sav >= 0 else "#e74c3c"
-                    c2.markdown(f"<span style='color:{ts_col}'>€{target_sav:,.0f}</span>",
-                                unsafe_allow_html=True)
-                    inc_s_inp = c3.number_input("_", value=cur_inc_s, step=50.0,
-                        placeholder="—", key=f"inc_s_{row['month']}",
-                        label_visibility="collapsed", help="Your actual net income this month")
-                    inc_p_inp = c4.number_input("_", value=cur_inc_p, step=50.0,
-                        placeholder="—", key=f"inc_p_{row['month']}",
-                        label_visibility="collapsed", help="Partner actual net income this month")
-                    sav_inp = c5.number_input("_", value=cur_sav, step=50.0,
-                        placeholder="—", key=f"sav_{row['month']}",
-                        label_visibility="collapsed", help="Combined household savings this month")
-                    c6.markdown(f"<span style='color:#aaa'>€{fixed:,.0f}</span>",
-                                unsafe_allow_html=True)
-                    inc_total = ((inc_s_inp or 0) + (inc_p_inp or 0)
-                                 if (inc_s_inp is not None or inc_p_inp is not None) else None)
-                    if inc_total is not None and sav_inp is not None:
-                        var_exp = inc_total - sav_inp - fixed
-                        vcol = "#e74c3c" if var_exp < 0 else "#2ecc71"
-                        c7.markdown(f"<span style='color:{vcol}'>€{var_exp:,.0f}</span>",
-                                    unsafe_allow_html=True)
-                    else:
-                        c7.markdown("<span style='color:#555'>—</span>", unsafe_allow_html=True)
-                    note_inp = c8.text_input("_", value=cur_note,
-                        key=f"note_{row['month']}", placeholder="note",
-                        label_visibility="collapsed")
-
-                else:
-                    c1, c2, c3, c4, c5, c6, c7 = st.columns(col_w)
-                    c1.markdown(lbl_txt)
-                    ts_col = "#2ecc71" if target_sav >= 0 else "#e74c3c"
-                    c2.markdown(f"<span style='color:{ts_col}'>€{target_sav:,.0f}</span>",
-                                unsafe_allow_html=True)
-                    inc_s_inp = c3.number_input("_", value=cur_inc_s, step=50.0,
-                        placeholder="—", key=f"inc_s_{row['month']}",
-                        label_visibility="collapsed")
-                    inc_p_inp = None
-                    sav_inp = c4.number_input("_", value=cur_sav, step=50.0,
-                        placeholder="—", key=f"sav_{row['month']}",
-                        label_visibility="collapsed")
-                    c5.markdown(f"<span style='color:#aaa'>€{fixed:,.0f}</span>",
-                                unsafe_allow_html=True)
-                    if inc_s_inp is not None and sav_inp is not None:
-                        var_exp = inc_s_inp - sav_inp - fixed
-                        vcol = "#e74c3c" if var_exp < 0 else "#2ecc71"
-                        c6.markdown(f"<span style='color:{vcol}'>€{var_exp:,.0f}</span>",
-                                    unsafe_allow_html=True)
-                    else:
-                        c6.markdown("<span style='color:#555'>—</span>", unsafe_allow_html=True)
-                    note_inp = c7.text_input("_", value=cur_note,
-                        key=f"note_{row['month']}", placeholder="note",
-                        label_visibility="collapsed")
-
-                updated_rows.append({
-                    "month":          row["month"],
-                    "inc_s_actual":   inc_s_inp,
-                    "inc_p_actual":   inc_p_inp,
-                    "savings_actual": sav_inp,
-                    "note":           note_inp,
-                })
-
-            # ── Year-end summary bar inside the expander ──────────────────────
-            if yr_has_data or True:
-                _yr_inp_s = sum(
-                    r["inc_s_actual"] for r in updated_rows
-                    if r["month"].startswith(yr_str) and r["inc_s_actual"] is not None
-                )
-                _yr_inp_p = sum(
-                    r["inc_p_actual"] for r in updated_rows
-                    if r["month"].startswith(yr_str) and r["inc_p_actual"] is not None
-                ) if has_partner else 0
-                _yr_inp_sav = sum(
-                    r["savings_actual"] for r in updated_rows
-                    if r["month"].startswith(yr_str) and r["savings_actual"] is not None
-                )
-                _yr_fc_inc = yr_rows["fc_inc_s"].sum() + (yr_rows["fc_inc_p"].sum() if has_partner else 0)
-                _yr_fc_sav = yr_rows["fc_sav"].sum()
-                st.markdown("---")
-                _sc = st.columns(4 if has_partner else 3)
-                _sc[0].metric(f"{yr_str} Income (You)", f"€{_yr_inp_s:,.0f}",
-                    delta=f"€{_yr_inp_s - yr_rows['fc_inc_s'].sum():+,.0f} vs forecast"
-                    if _yr_inp_s > 0 else None)
-                if has_partner:
-                    _sc[1].metric(f"{yr_str} Income (Partner)", f"€{_yr_inp_p:,.0f}",
-                        delta=f"€{_yr_inp_p - yr_rows['fc_inc_p'].sum():+,.0f} vs forecast"
-                        if _yr_inp_p > 0 else None)
-                _sc[-2].metric(f"{yr_str} Savings", f"€{_yr_inp_sav:,.0f}",
-                    delta=f"€{_yr_inp_sav - _yr_fc_sav:+,.0f} vs forecast"
-                    if _yr_inp_sav > 0 else None)
-                _sc[-1].metric(f"{yr_str} Forecast Income", f"€{_yr_fc_inc:,.0f}",
-                    help="Combined forecast net income for the year")
-
-
-
-    # ── Buttons row ──────────────────────────────────────────────────────────
-    st.divider()
-    btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([2, 2, 2, 4])
-
-    with btn_col1:
-        if st.button("➕ Add Month", help="Unlock one more future month for data entry"):
-            st.session_state["act_extra_months"] += 1
-            st.rerun()
-
-    with btn_col2:
-        if st.button("💾 Save Actuals", type="primary",
-                     help="Saves your entries to this browser session. Download below to keep them permanently."):
-            # Build a DataFrame from what the user typed in the widgets
-            widget_df = pd.DataFrame(updated_rows)
-            for _c in ["inc_s_actual", "inc_p_actual", "savings_actual"]:
-                widget_df[_c] = pd.to_numeric(widget_df[_c], errors="coerce")
-
-            # Merge with any already-saved data (preserves off-screen months)
-            existing = load_actuals()
-            if existing.empty or "month" not in existing.columns:
-                merged = widget_df.copy()
-            else:
-                off_screen = existing[~existing["month"].isin(widget_df["month"])]
-                on_screen  = widget_df.copy()
-                if "note" in existing.columns:
-                    disk_notes = existing.set_index("month")["note"]
-                    on_screen["note"] = on_screen.apply(
-                        lambda r: (disk_notes.get(r["month"], "") or "")
-                        if not r["note"] else r["note"],
-                        axis=1,
-                    )
-                merged = pd.concat([off_screen, on_screen], ignore_index=True)
-
-            # Drop entirely empty rows
-            merged = merged[
-                merged["inc_s_actual"].notna() |
-                merged["inc_p_actual"].notna() |
-                merged["savings_actual"].notna()
-            ]
-            merged = merged.sort_values("month").reset_index(drop=True)
-            save_actuals(merged)
-            st.success(f"✅ {len(merged)} months saved to this session. Download below to keep permanently.")
-            st.rerun()
-
-    # Download actuals CSV
-    _act_for_dl = load_actuals()
-    with btn_col3:
-        st.download_button(
-            label="⬇️ Download actuals",
-            data=actuals_to_csv_bytes(_act_for_dl) if not _act_for_dl.empty else b"month,inc_s_actual,inc_p_actual,savings_actual,note\n",
-            file_name="dutch_dashboard_actuals.csv",
-            mime="text/csv",
-            use_container_width=True,
-            help="Download your actuals data as a CSV to keep it permanently. Re-upload it next session.",
-        )
-
-    # Upload actuals CSV — shown below the button row for space
-    st.markdown("**⬆️ Restore actuals from file**")
-    _uploaded_actuals = st.file_uploader(
-        "Upload actuals CSV",
-        type=["csv"],
-        key="actuals_upload",
-        label_visibility="collapsed",
-        help="Upload a previously downloaded actuals CSV to restore your data.",
-    )
-    if _uploaded_actuals is not None:
-        _act_restored = actuals_from_uploaded_file(_uploaded_actuals)
-        save_actuals(_act_restored)
-        st.success(f"✅ {len(_act_restored)} months of actuals restored from file.")
-        st.rerun()
-
-    # ── Charts ────────────────────────────────────────────────────────────────
-    actual_data = pd.DataFrame(updated_rows)
-    for col_n in ["inc_s_actual","inc_p_actual","savings_actual"]:
-        actual_data[col_n] = pd.to_numeric(actual_data[col_n], errors="coerce")
-    actual_data = actual_data.merge(fc_df, on="month", how="left")
-    actual_data["month_dt"]    = pd.to_datetime(actual_data["month"] + "-01")
-    actual_data["inc_combined"] = actual_data["inc_s_actual"].fillna(0) + \
-                                  actual_data["inc_p_actual"].fillna(0)
-    actual_data["inc_combined"] = actual_data["inc_combined"].where(
-        actual_data["inc_s_actual"].notna() | actual_data["inc_p_actual"].notna(), other=float("nan"))
-    actual_data["var_exp"] = actual_data["inc_combined"] - \
-                             actual_data["savings_actual"] - \
-                             actual_data["fc_fixed"]
-
-    has_actuals = actual_data["savings_actual"].notna().any() or \
-                  actual_data["inc_s_actual"].notna().any()
-
-    if has_actuals:
-        st.divider()
-        st.subheader("📊 Actuals vs Forecast")
-
-        # Income chart: show all months that have any income data
-        a_inc  = actual_data.dropna(subset=["inc_s_actual"], how="all").copy()
-        # Savings chart: show months with savings data
-        a_f    = actual_data.dropna(subset=["savings_actual"]).copy()
-        # Full breakdown: need both income and savings
-        a_full = actual_data.dropna(subset=["savings_actual","inc_combined"]).copy()
-
-        # ── Chart 1: Income per person vs forecast ────────────────────────────
-        cl, cr = st.columns(2)
-        fig_a0 = go.Figure()
-        if has_partner:
-            # Forecast bars shown for all months with any actual income
-            _months_with_inc = actual_data[
-                actual_data["inc_s_actual"].notna() | actual_data["inc_p_actual"].notna()
-            ]
-            fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"], y=_months_with_inc["fc_inc_s"],
-                                    name=f"Forecast {p_act.get('name_s','You')}",
-                                    marker_color="#3498db", opacity=0.45))
-            fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"], y=_months_with_inc["fc_inc_p"],
-                                    name=f"Forecast {p_act.get('name_p','Partner')}",
-                                    marker_color="#8e44ad", opacity=0.45))
-            if actual_data["inc_s_actual"].notna().any():
-                fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"],
-                                        y=_months_with_inc["inc_s_actual"],
-                                        name=f"Actual {p_act.get('name_s','You')}",
-                                        marker_color="#2ecc71"))
-            if actual_data["inc_p_actual"].notna().any():
-                fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"],
-                                        y=_months_with_inc["inc_p_actual"],
-                                        name=f"Actual {p_act.get('name_p','Partner')}",
-                                        marker_color="#f1c40f"))
-            fig_a0.update_layout(barmode="group",
-                                  **chart_layout("Monthly Income per Person: Actual vs Forecast",
-                                                 height=340))
-        else:
-            _months_with_inc = actual_data[actual_data["inc_s_actual"].notna()]
-            fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"], y=_months_with_inc["fc_inc_s"],
-                                    name="Forecast Income", marker_color="#3498db", opacity=0.5))
-            if actual_data["inc_s_actual"].notna().any():
-                fig_a0.add_trace(go.Bar(x=_months_with_inc["month_dt"],
-                                        y=_months_with_inc["inc_s_actual"],
-                                        name="Actual Income", marker_color="#2ecc71"))
-            fig_a0.update_layout(barmode="overlay",
-                                  **chart_layout("Monthly Income: Actual vs Forecast", height=340))
-        cl.plotly_chart(fig_a0, use_container_width=True, key="fig_act_0")
-
-        # ── Chart 2: Savings actual vs forecast ──────────────────────────────
-        fig_a1 = go.Figure()
-        fig_a1.add_trace(go.Bar(x=a_f["month_dt"], y=a_f["fc_sav"],
-                                name="Forecast Savings", marker_color="#3498db", opacity=0.5))
-        fig_a1.add_trace(go.Bar(x=a_f["month_dt"], y=a_f["savings_actual"],
-                                name="Actual Savings", marker_color="#2ecc71"))
-        fig_a1.update_layout(barmode="overlay",
-                              **chart_layout("Monthly Savings: Actual vs Forecast", height=340))
-        cr.plotly_chart(fig_a1, use_container_width=True, key="fig_act_1")
-
-        cl2, cr2 = st.columns(2)
-
-        # ── Chart 3: Stacked breakdown ────────────────────────────────────────
-        if not a_full.empty:
-            a_full["var_pos"] = a_full["var_exp"].clip(lower=0)
-            fig_a2 = go.Figure()
-            fig_a2.add_trace(go.Bar(x=a_full["month_dt"], y=a_full["fc_fixed"],
-                                    name="Fixed Expenses", marker_color="#e74c3c"))
-            fig_a2.add_trace(go.Bar(x=a_full["month_dt"], y=a_full["var_pos"],
-                                    name="Variable Expenses", marker_color="#e67e22"))
-            fig_a2.add_trace(go.Bar(x=a_full["month_dt"], y=a_full["savings_actual"],
-                                    name="Savings", marker_color="#2ecc71"))
-            fig_a2.add_trace(go.Scatter(x=a_full["month_dt"], y=a_full["inc_combined"],
-                                        name="Combined Income", mode="lines+markers",
-                                        line=dict(color="white", width=2)))
-            if has_partner:
-                fig_a2.add_trace(go.Scatter(x=a_full["month_dt"], y=a_full["inc_s_actual"],
-                                            name=f"{p_act.get('name_s','You')} income",
-                                            mode="lines", line=dict(color="#2ecc71", width=1.5, dash="dot")))
-            fig_a2.update_layout(barmode="stack",
-                                  **chart_layout("Monthly: Fixed + Variable + Savings vs Income",
-                                                 height=380))
-            cl2.plotly_chart(fig_a2, use_container_width=True, key="fig_act_2")
-
-            # ── Chart 4: Variable expenses ────────────────────────────────────
-            fig_a3 = go.Figure()
-            fig_a3.add_trace(go.Bar(
-                x=a_full["month_dt"], y=a_full["var_exp"],
-                name="Variable Expenses",
-                marker_color=["#e74c3c" if v < 0 else "#e67e22" for v in a_full["var_exp"]]
-            ))
-            avg_var = a_full["var_exp"].mean()
-            fig_a3.add_hline(y=avg_var, line_color="#f1c40f", line_dash="dash",
-                             annotation_text=f"avg €{avg_var:,.0f}",
-                             annotation_position="top right")
-            fig_a3.add_hline(y=0, line_color="gray", line_dash="dot")
-            fig_a3.update_layout(**chart_layout("Variable (Discretionary) Expenses per Month",
-                                                height=380))
-            cr2.plotly_chart(fig_a3, use_container_width=True, key="fig_act_3")
-        else:
-            cl2.info("Enter both income and savings for full breakdown charts.", icon="📝")
-
-        # ── Cumulative savings ────────────────────────────────────────────────
-        a_f = a_f[a_f["month"] <= today_str].copy()   # exclude future months from cumulative
-        if not a_f.empty:
-            a_f["cumul_actual"]   = a_f["savings_actual"].cumsum()
-            a_f["cumul_forecast"] = a_f["fc_sav"].cumsum()
-            diff     = a_f["cumul_actual"].iloc[-1] - a_f["cumul_forecast"].iloc[-1]
-            sign_lbl = "ahead of" if diff >= 0 else "behind"
-            fig_a4 = go.Figure()
-            fig_a4.add_trace(go.Scatter(x=a_f["month_dt"], y=a_f["cumul_actual"],
-                                        name="Cumulative Actual",
-                                        line=dict(color="#2ecc71", width=2.5)))
-            fig_a4.add_trace(go.Scatter(x=a_f["month_dt"], y=a_f["cumul_forecast"],
-                                        name="Cumulative Forecast",
-                                        line=dict(color="#3498db", width=2, dash="dash")))
-            fig_a4.update_layout(**chart_layout(
-                f"Cumulative Savings — €{abs(diff):,.0f} {sign_lbl} forecast", height=320))
-            st.plotly_chart(fig_a4, use_container_width=True, key="fig_act_4")
-
-        # ── Net worth tracker ────────────────────────────────────────────────
-        _nws = p_act.get("net_worth_start", 0)
-        if not a_f.empty:
-            a_f["net_worth"] = _nws + a_f["cumul_actual"]
-            a_f["net_worth_fc"] = _nws + a_f["cumul_forecast"]
-            _nw_latest = a_f["net_worth"].iloc[-1]
-            _nw_fc_latest = a_f["net_worth_fc"].iloc[-1]
-            _nw_delta = _nw_latest - _nw_fc_latest
-            fig_nw = go.Figure()
-            fig_nw.add_trace(go.Scatter(
-                x=a_f["month_dt"], y=a_f["net_worth"],
-                name="Actual Net Worth",
-                line=dict(color="#f1c40f", width=2.5),
-                fill="tozeroy", fillcolor="rgba(241,196,15,0.07)"))
-            fig_nw.add_trace(go.Scatter(
-                x=a_f["month_dt"], y=a_f["net_worth_fc"],
-                name="Forecast Net Worth",
-                line=dict(color="#95a5a6", width=1.5, dash="dash")))
-            fig_nw.update_layout(**chart_layout(
-                f"Net Worth — €{_nw_latest:,.0f} actual · "
-                f"{'ahead of' if _nw_delta >= 0 else 'behind'} forecast by €{abs(_nw_delta):,.0f}",
-                "€", height=300))
-            st.plotly_chart(fig_nw, use_container_width=True, key="fig_act_nw")
-            _nw_col1, _nw_col2, _nw_col3 = st.columns(3)
-            _nw_col1.metric("Starting Net Worth", f"€{_nws:,.0f}",
-                help="Set in ⚙️ Setup → 📈 Projection Assumptions.")
-            _nw_col2.metric("Current Net Worth (actual)", f"€{_nw_latest:,.0f}",
-                delta=f"€{_nw_delta:+,.0f} vs forecast")
-            _nw_col3.metric("Net Worth Forecast", f"€{_nw_fc_latest:,.0f}")
-
-        # ── Net Worth Tracker ────────────────────────────────────────────────
-        _nws = p_act.get("net_worth_start", 0)
-        if _nws > 0 and not a_f.empty:
-            st.divider()
-            st.subheader("💎 Net Worth Tracker")
-            st.caption(
-                f"Starting net worth **€{_nws:,.0f}** (from Setup → Projection Assumptions) "
-                "plus cumulative savings to date. Liquid wealth only — "
-                "home equity from the Buy vs Rent tab adds on top."
-            )
-            a_nw = a_f.copy()
-            a_nw["nw_actual"]   = _nws + a_nw["cumul_actual"]
-            a_nw["nw_forecast"] = _nws + a_nw["cumul_forecast"]
-            _cur_nw   = a_nw["nw_actual"].iloc[-1]
-            _fc_nw    = a_nw["nw_forecast"].iloc[-1]
-            _nw_delta = _cur_nw - _fc_nw
-            _nw_cols  = st.columns(3)
-            _nw_cols[0].metric("Current Net Worth (liquid)", f"€{_cur_nw:,.0f}",
-                delta=f"€{_nw_delta:+,.0f} vs forecast",
-                help="Starting net worth + cumulative actual savings entered in this tab.")
-            _nw_cols[1].metric("Forecast Net Worth (to date)", f"€{_fc_nw:,.0f}",
-                help="Starting net worth + cumulative forecast savings for the same period.")
-            _nw_cols[2].metric("Months Tracked", len(a_nw),
-                help="Number of months with actual savings data entered.")
-            fig_nw = go.Figure()
-            fig_nw.add_trace(go.Scatter(
-                x=a_nw["month_dt"], y=a_nw["nw_actual"],
-                name="Actual Net Worth", mode="lines+markers",
-                line=dict(color="#2ecc71", width=2.5), marker=dict(size=6)
-            ))
-            fig_nw.add_trace(go.Scatter(
-                x=a_nw["month_dt"], y=a_nw["nw_forecast"],
-                name="Forecast Net Worth", mode="lines",
-                line=dict(color="#3498db", width=2, dash="dash")
-            ))
-            fig_nw.add_hline(y=_nws, line_color="#7f8c8d", line_dash="dot",
-                annotation_text=f"Start €{_nws:,.0f}", annotation_position="bottom right")
-            fig_nw.update_layout(**chart_layout(
-                f"Net Worth Over Time — starting €{_nws:,.0f}", "€", height=340))
-            st.plotly_chart(fig_nw, use_container_width=True, key="fig_act_nw")
-        elif _nws == 0 and not a_f.empty:
-            st.info(
-                "💡 Set a **Starting net worth** in ⚙️ Setup → Projection Assumptions "
-                "to enable the net worth tracker here.", icon="💎"
-            )
-
-        # ── KPI summary ───────────────────────────────────────────────────────
-        kpi_cols = st.columns(5 if not has_partner else 6)
-        kpi_cols[0].metric("Months Entered", len(a_f))
-        if a_f["inc_s_actual"].notna().any():
-            kpi_cols[1].metric(f"Avg {p_act.get('name_s','Your')} Income",
-                               f"€{a_f['inc_s_actual'].mean():,.0f}",
-                               delta=f"€{a_f['inc_s_actual'].mean()-a_f['fc_inc_s'].mean():,.0f} vs forecast")
-        else:
-            kpi_cols[1].metric(f"Forecast {p_act.get('name_s','Your')} Income",
-                               f"€{a_f['fc_inc_s'].mean():,.0f}")
-        idx = 2
-        if has_partner:
-            if a_f["inc_p_actual"].notna().any():
-                kpi_cols[idx].metric(f"Avg {p_act.get('name_p','Partner')} Income",
-                                     f"€{a_f['inc_p_actual'].mean():,.0f}",
-                                     delta=f"€{a_f['inc_p_actual'].mean()-a_f['fc_inc_p'].mean():,.0f} vs forecast")
-            else:
-                kpi_cols[idx].metric(f"Forecast {p_act.get('name_p','Partner')} Income",
-                                     f"€{a_f['fc_inc_p'].mean():,.0f}")
-            idx += 1
-        kpi_cols[idx].metric("Avg Savings/mo", f"€{a_f['savings_actual'].mean():,.0f}",
-                             delta=f"€{a_f['savings_actual'].mean()-a_f['fc_sav'].mean():,.0f} vs forecast")
-        kpi_cols[idx+1].metric("Avg Fixed/mo", f"€{a_f['fc_fixed'].mean():,.0f}")
-        if not a_full.empty:
-            kpi_cols[idx+2].metric("Avg Variable/mo", f"€{a_full['var_exp'].mean():,.0f}",
-                                   help="Combined income − savings − fixed expenses")
-        else:
-            kpi_cols[idx+2].metric("Avg Variable/mo", "—")
-    else:
-        st.info("Enter actual income and savings above, then click **Save Actuals** to see charts.", icon="📝")
-
-    # ── How are these numbers calculated? (bottom of tab) ─────────────────────
-    st.divider()
-    with st.expander("📖 How are these numbers calculated?", expanded=False):
-        st.markdown("""
-### Actuals vs Forecast — How the numbers work
-
-#### Data you enter
-- **Actual Income (You / Partner)** — your real net monthly take-home pay. This should match what lands in your bank account. Import directly from your ING bank statement (Credit rows) using the bank importer above, or type it manually.
-- **Actual Savings** — the total amount you actually saved or transferred to savings that month.
-
-#### Auto-computed columns
-- **Target Savings** *(green/red)* — the forecast combined household savings for that month, calculated from your Setup inputs. Green = positive surplus, red = deficit.
-- **Fixed** — your fixed monthly costs pulled directly from Setup (housing + all recurring expenses). This number changes when you switch from renting to owning.
-- **Variable** — the discretionary spend derived as:
-  ```
-  Variable = (Your Income + Partner Income) − Savings − Fixed Expenses
-  ```
-  This is everything not accounted for by fixed costs or savings: food out, clothing, holidays, entertainment. A negative number means income didn't cover fixed costs plus your target savings.
-
-#### Year summaries
-Each year section shows:
-- **Total income** received (You + Partner) vs the annual forecast
-- **Total savings** vs the annual forecast savings target
-
-#### Charts (below the table)
-- **Income chart** — actual income per person vs the forecast, by month. Useful for spotting income fluctuations or bonus months.
-- **Savings chart** — actual monthly savings vs forecast target.
-- **Expense breakdown** — shows how income splits across fixed costs, variable spending, and savings.
-- **Cumulative savings** — running total of actual savings vs cumulative forecast. Drift above or below the line shows whether you're ahead or behind your target.
-- **Net Worth tracker** — starting net worth (from Setup) plus cumulative savings. Requires a starting net worth value in Setup → Projection Assumptions.
-        """)
-
 with tabs[6]:
-    st.subheader("📋 Monthly P&L — Scenario A")
-    disp = df_m_a.copy()
-    disp["Date"] = disp["Date"].dt.strftime("%b %Y")
-    disp["30% Ruling"] = disp["30% Ruling"].map({True: "✅", False: "❌"})
-    for c in ["Net Self","Net Partner","Total Net","Zorgtoeslag","Housing Cost",
-              "MRI Benefit","Fixed Expenses","Total Expenses","Net Saving"]:
-        disp[c] = disp[c].apply(lambda x: f"€{x:,.0f}")
-    st.dataframe(disp.drop(columns=["Year","Month","Mortgage Balance"]),
-                 use_container_width=True, hide_index=True)
+    if not IS_PAID:
+        _paid_gate("Data & Export", icon="📋")
+        st.caption("Download full monthly projections and wealth data as an Excel file. Available on Pro.")
+        _paid_gate("Monthly P&L table · Wealth accumulation table · Excel download", icon="📥", compact=True)
+    else:
+        st.subheader("📋 Monthly P&L — Scenario A")
+        disp = df_m_a.copy()
+        disp["Date"] = disp["Date"].dt.strftime("%b %Y")
+        disp["30% Ruling"] = disp["30% Ruling"].map({True: "✅", False: "❌"})
+        for c in ["Net Self","Net Partner","Total Net","Zorgtoeslag","Housing Cost",
+                  "MRI Benefit","Fixed Expenses","Total Expenses","Net Saving"]:
+            disp[c] = disp[c].apply(lambda x: f"€{x:,.0f}")
+        st.dataframe(disp.drop(columns=["Year","Month","Mortgage Balance"]),
+                     use_container_width=True, hide_index=True)
 
-    st.subheader("🏦 Monthly Wealth — Scenario A")
-    disp_w = df_w_a.copy()
-    disp_w["Date"] = disp_w["Date"].dt.strftime("%b %Y")
-    for c in ["Cash (Buy)","Home Equity","House Value","Mortgage Balance",
-              "Total Wealth (Buy)","Cash (Rent)","Total Wealth (Rent)","Wealth Delta"]:
-        disp_w[c] = disp_w[c].apply(lambda x: f"€{x:,.0f}")
-    st.dataframe(disp_w.drop(columns=["Year"]), use_container_width=True, hide_index=True)
+        st.subheader("🏦 Monthly Wealth — Scenario A")
+        disp_w = df_w_a.copy()
+        disp_w["Date"] = disp_w["Date"].dt.strftime("%b %Y")
+        for c in ["Cash (Buy)","Home Equity","House Value","Mortgage Balance",
+                  "Total Wealth (Buy)","Cash (Rent)","Total Wealth (Rent)","Wealth Delta"]:
+            disp_w[c] = disp_w[c].apply(lambda x: f"€{x:,.0f}")
+        st.dataframe(disp_w.drop(columns=["Year"]), use_container_width=True, hide_index=True)
 
-    st.divider()
-    st.subheader("⬇️ Download as Excel")
-    col1, col2 = st.columns(2)
-    col1.download_button("📥 Download Scenario A",
-                         data=to_excel_bytes(df_m_a, df_w_a),
-                         file_name="dutch_dashboard_A.xlsx",
-                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    if ab_mode:
-        col2.download_button("📥 Download Scenario B",
-                             data=to_excel_bytes(df_m_b, df_w_b),
-                             file_name="dutch_dashboard_B.xlsx",
+        st.divider()
+        st.subheader("⬇️ Download as Excel")
+        col1, col2 = st.columns(2)
+        col1.download_button("📥 Download Scenario A",
+                             data=to_excel_bytes(df_m_a, df_w_a),
+                             file_name="dutch_dashboard_A.xlsx",
                              mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        if ab_mode:
+            col2.download_button("📥 Download Scenario B",
+                                 data=to_excel_bytes(df_m_b, df_w_b),
+                                 file_name="dutch_dashboard_B.xlsx",
+                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-    # ── How are these numbers calculated? (bottom of tab) ─────────────────────
+
+
+        # ── How are these numbers calculated? (bottom of tab) ─────────────────────
+        st.divider()
+        with st.expander("📖 How are these numbers calculated?", expanded=False):
+            st.markdown("""
+    ### Data & Export — Column Definitions
+
+    #### Monthly P&L table
+
+    | Column | Description |
+    |--------|-------------|
+    | **Date** | Month and year |
+    | **30% Ruling** | ✅ if the 30% ruling is active for that month (for You or Partner) |
+    | **Net Self** | Your monthly net income after Box 1, ZVW, AHK, and arbeidskorting |
+    | **Net Partner** | Partner's monthly net income (0 if no partner) |
+    | **Total Net** | Combined household net income |
+    | **Zorgtoeslag** | Monthly government health insurance subsidy |
+    | **Housing Cost** | Rent or gross mortgage payment for that month |
+    | **MRI Benefit** | Hypotheekrenteaftrek tax saving on mortgage interest (0 during rent period) |
+    | **Fixed Expenses** | All recurring costs from Setup: housing (net of MRI), health insurance, car, groceries, utilities, phone, gym, dog, other |
+    | **Total Expenses** | Fixed expenses minus zorgtoeslag (net of subsidy) |
+    | **Net Saving** | Total Net income minus Total Expenses — your monthly surplus or deficit |
+
+    #### Monthly Wealth table
+
+    | Column | Description |
+    |--------|-------------|
+    | **Cash (Buy)** | Liquid savings in the buy scenario — starts with your initial savings, grows by monthly surplus and investment return, falls on down payment and buying costs |
+    | **Home Equity** | House value minus outstanding mortgage balance. Grows with principal repayment and house appreciation. At sale, converts back to cash. |
+    | **House Value** | Current market value of the house, appreciating at your Setup rate annually |
+    | **Mortgage Balance** | Outstanding mortgage debt — falls with each principal repayment |
+    | **Total Wealth (Buy)** | Cash (Buy) + Home Equity — your true net worth in the buy scenario |
+    | **Cash (Rent)** | Liquid savings in the rent scenario — invested from day 1, grows by monthly surplus and investment return |
+    | **Total Wealth (Rent)** | Same as Cash (Rent) — no home equity in this scenario |
+    | **Wealth Delta** | Total Wealth (Buy) minus Total Wealth (Rent) — positive means buying is winning |
+
+    #### Excel export
+    The downloaded Excel file contains both the P&L and Wealth tables on separate sheets, with all values pre-formatted. Useful for building your own charts or sharing with a financial advisor.
+            """)
+
     st.divider()
-    with st.expander("📖 How are these numbers calculated?", expanded=False):
+    st.caption("⚠️ Approximations of Dutch tax law 2026–2030. Box 3 uses fictitious return system. "
+               "Zorgtoeslag is estimated. Always consult a belastingadviseur / financieel planner.")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 7 — RETIREMENT PLANNING
+# ════════════════════════════════════════════════════════════════════════════════
+
+with tabs[7]:
+    st.subheader("🏖️ Retirement Planning")
+    st.caption(
+        "Dutch retirement projection — AOW · occupational pension · private capital · "
+        "FIRE number · portfolio depletion · sensitivity analysis"
+    )
+
+    with st.expander("ℹ️ How does this tab work?", expanded=False):
         st.markdown("""
-### Data & Export — Column Definitions
+This tab models your **path to retirement** and whether your projected capital is sufficient.
 
-#### Monthly P&L table
+**Three income pillars (Dutch system):**
+- **AOW** — state pension paid from age 67 (amount depends on years of residency; full AOW ≈ €1,450/mo single, €1,000/mo each for couples).
+- **Occupational pension (2e pijler)** — accrued via your employer. Enter your expected monthly amount.
+- **Private capital (3e pijler / Box 3)** — your own savings and investments drawn down in retirement.
 
-| Column | Description |
-|--------|-------------|
-| **Date** | Month and year |
-| **30% Ruling** | ✅ if the 30% ruling is active for that month (for You or Partner) |
-| **Net Self** | Your monthly net income after Box 1, ZVW, AHK, and arbeidskorting |
-| **Net Partner** | Partner's monthly net income (0 if no partner) |
-| **Total Net** | Combined household net income |
-| **Zorgtoeslag** | Monthly government health insurance subsidy |
-| **Housing Cost** | Rent or gross mortgage payment for that month |
-| **MRI Benefit** | Hypotheekrenteaftrek tax saving on mortgage interest (0 during rent period) |
-| **Fixed Expenses** | All recurring costs from Setup: housing (net of MRI), health insurance, car, groceries, utilities, phone, gym, dog, other |
-| **Total Expenses** | Fixed expenses minus zorgtoeslag (net of subsidy) |
-| **Net Saving** | Total Net income minus Total Expenses — your monthly surplus or deficit |
+**Key metrics calculated:**
+- **Pension gap** — the difference between your target retirement income and AOW + pension.
+- **Capital needed at retirement** — gap capitalised using the Safe Withdrawal Rate (SWR).
+- **FIRE number** — total portfolio needed to retire, using your SWR. Based on the 4% rule / Trinity Study.
+- **Savings runway** — years until your projected portfolio reaches the FIRE number.
+- **Portfolio depletion** — how long capital lasts if drawn at the gap amount from retirement.
 
-#### Monthly Wealth table
-
-| Column | Description |
-|--------|-------------|
-| **Cash (Buy)** | Liquid savings in the buy scenario — starts with your initial savings, grows by monthly surplus and investment return, falls on down payment and buying costs |
-| **Home Equity** | House value minus outstanding mortgage balance. Grows with principal repayment and house appreciation. At sale, converts back to cash. |
-| **House Value** | Current market value of the house, appreciating at your Setup rate annually |
-| **Mortgage Balance** | Outstanding mortgage debt — falls with each principal repayment |
-| **Total Wealth (Buy)** | Cash (Buy) + Home Equity — your true net worth in the buy scenario |
-| **Cash (Rent)** | Liquid savings in the rent scenario — invested from day 1, grows by monthly surplus and investment return |
-| **Total Wealth (Rent)** | Same as Cash (Rent) — no home equity in this scenario |
-| **Wealth Delta** | Total Wealth (Buy) minus Total Wealth (Rent) — positive means buying is winning |
-
-#### Excel export
-The downloaded Excel file contains both the P&L and Wealth tables on separate sheets, with all values pre-formatted. Useful for building your own charts or sharing with a financial advisor.
+**Assumptions:** Returns are nominal. Inflation adjustment reduces real purchasing power over time.
         """)
 
-st.divider()
-st.caption("⚠️ Approximations of Dutch tax law 2026–2030. Box 3 uses fictitious return system. "
-           "Zorgtoeslag is estimated. Always consult a belastingadviseur / financieel planner.")
+    p = pa   # use Scenario A parameters
+    sv_ret = saved_A   # for reading saved retirement inputs
+
+    st.divider()
+    st.markdown("#### ⚙️ Retirement Inputs")
+    rc1, rc2, rc3 = st.columns(3)
+
+    ret_current_age = rc1.number_input(
+        "Your current age", value=int(sv_ret.get("ret_current_age", 32)),
+        min_value=18, max_value=80, step=1, key="ret_age_now",
+        help="Used to calculate years to retirement and savings accumulation period.")
+    ret_age = rc2.number_input(
+        "Target retirement age", value=int(sv_ret.get("ret_age", 67)),
+        min_value=40, max_value=80, step=1, key="ret_age",
+        help="Dutch AOW age is currently 67. You can target early retirement (FIRE) by setting a lower age.")
+    ret_target_income = rc3.number_input(
+        "Target retirement income (€/mo net)", value=int(sv_ret.get("ret_target_income", 3500)),
+        min_value=500, max_value=20000, step=100, key="ret_target",
+        help="The monthly after-tax income you want in retirement. A common rule of thumb is 70–80% of your final net salary.")
+
+    rc4, rc5, rc6 = st.columns(3)
+    ret_aow = rc4.number_input(
+        "Expected AOW (€/mo)", value=int(sv_ret.get("ret_aow", 1450)),
+        min_value=0, max_value=3000, step=50, key="ret_aow",
+        help="Full AOW (2026): ~€1,450/mo for singles, ~€1,000/mo each for couples. Reduced if you have fewer than 50 years of Dutch residency (2% per missing year).")
+    ret_pension = rc5.number_input(
+        "Expected occupational pension (€/mo)", value=int(sv_ret.get("ret_pension", 500)),
+        min_value=0, max_value=10000, step=50, key="ret_pension",
+        help="Monthly pension from your employer's scheme (2e pijler). Check your UPO (Uniform Pensioenoverzicht) from Mijnpensioenoverzicht.nl for your accrued and projected amount.")
+    ret_swr = rc6.slider(
+        "Safe Withdrawal Rate (%/yr)", 2.0, 6.0,
+        float(sv_ret.get("ret_swr", 0.035)) * 100, 0.1,
+        key="ret_swr",
+        help="The % of your portfolio you withdraw annually in retirement. The classic '4% rule' (Trinity Study) works for 30yr horizons; use 3–3.5% for longer retirements or more safety.") / 100
+
+    rc7, rc8, rc9 = st.columns(3)
+    ret_return_pre = rc7.slider(
+        "Pre-retirement return (%/yr)", 2.0, 12.0,
+        float(sv_ret.get("ret_return_pre", 0.07)) * 100, 0.25,
+        key="ret_ret_pre",
+        help="Expected annual nominal return on investments before retirement. Global equity index funds have historically returned ~7–9% nominal.") / 100
+    ret_return_post = rc8.slider(
+        "Post-retirement return (%/yr)", 1.0, 8.0,
+        float(sv_ret.get("ret_return_post", 0.04)) * 100, 0.25,
+        key="ret_ret_post",
+        help="Lower than pre-retirement as the portfolio shifts to more conservative assets (bonds, annuities) to reduce sequence-of-returns risk.") / 100
+    ret_inflation = rc9.slider(
+        "Inflation (%/yr)", 0.0, 6.0,
+        float(sv_ret.get("ret_inflation", 0.025)) * 100, 0.25,
+        key="ret_inflation",
+        help="Used to show real (inflation-adjusted) values. ECB target is 2%. Dutch CPI averaged ~2.5% 2000–2024.") / 100
+
+    # ── Core calculations ─────────────────────────────────────────────────────
+    import datetime as _dt_ret
+    years_to_ret  = max(ret_age - ret_current_age, 1)
+    years_in_ret  = 100 - ret_age   # to age 100 (conservative)
+
+    # Pension gap = target - (AOW + occupational pension)
+    pillar1_2     = ret_aow + ret_pension
+    pension_gap   = max(ret_target_income - pillar1_2, 0)
+
+    # Capital needed at retirement to fund the gap (SWR method)
+    capital_needed = pension_gap * 12 / ret_swr if ret_swr > 0 else 0
+
+    # FIRE number = total capital that can fund full target income (no AOW/pension subtracted)
+    fire_number   = ret_target_income * 12 / ret_swr if ret_swr > 0 else 0
+
+    # Starting capital = current wealth from Buy vs Rent projection
+    # Use end-of-projection wealth (Buy scenario total)
+    starting_capital = df_w_a.iloc[-1]["Total Wealth (Buy)"]
+
+    # Monthly savings (average over projection)
+    avg_monthly_saving = df_m_a["Net Saving"].mean()
+
+    # Project portfolio growth year-by-year (pre-retirement)
+    _r_mo = (1 + ret_return_pre) ** (1/12) - 1
+    portfolio = []
+    cap = starting_capital
+    _n_proj_years = pa.get("n_years", 5)
+    _years_remaining_to_ret = years_to_ret - _n_proj_years
+    # Phase 1: during projection window (we have monthly data)
+    for _, row in df_m_a.iterrows():
+        cap = cap * (1 + _r_mo) + row["Net Saving"]
+    # Phase 2: after projection window to retirement (use avg saving, apply growth)
+    for yr in range(max(_years_remaining_to_ret, 0)):
+        for mo in range(12):
+            cap = cap * (1 + _r_mo) + avg_monthly_saving
+    projected_capital_at_ret = max(cap, 0)
+
+    # Savings runway: years until projected portfolio hits capital_needed
+    # Brute-force forward simulation from current end-of-projection capital
+    _cap_run = starting_capital
+    runway_years = None
+    for yr in range(1, 61):
+        for mo in range(12):
+            _cap_run = _cap_run * (1 + _r_mo) + avg_monthly_saving
+        if _cap_run >= capital_needed:
+            runway_years = yr
+            break
+
+    # Portfolio depletion from projected_capital_at_ret
+    _cap_dep = projected_capital_at_ret
+    _r_mo_post = (1 + ret_return_post) ** (1/12) - 1
+    _gap_mo = pension_gap
+    depletion_years = None
+    for yr in range(1, 71):
+        for mo in range(12):
+            _cap_dep = _cap_dep * (1 + _r_mo_post) - _gap_mo
+            if _cap_dep <= 0:
+                depletion_years = yr
+                break
+        if depletion_years:
+            break
+
+    # Net replacement ratio
+    _cur_net = net_monthly_calc(p["inc_s"], 2026,
+        p.get("ruling_s", False) and p.get("rs_s", 2026) <= 2026 < p.get("re_s", 2031))
+    _cur_net += net_monthly_calc(p["inc_p"], 2026, False) if p.get("partner") else 0
+    replacement_ratio = ret_target_income / max(_cur_net, 1) * 100
+
+    # ── KPI strip ────────────────────────────────────────────────────────────
+    st.divider()
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Pension Gap / mo",
+              f"€{pension_gap:,.0f}",
+              help="Monthly shortfall: target income minus AOW and occupational pension.")
+    k2.metric("Capital Needed at Retirement",
+              f"€{capital_needed:,.0f}",
+              help=f"Gap × 12 ÷ SWR ({ret_swr*100:.1f}%). Lump sum needed on retirement day to fund the shortfall indefinitely.")
+    k3.metric("FIRE Number",
+              f"€{fire_number:,.0f}",
+              help="Total portfolio for full independence (no AOW/pension assumed). Same SWR applied to full target income.")
+    k4.metric("Projected Capital at Retirement",
+              f"€{projected_capital_at_ret:,.0f}",
+              delta=f"{'✅ Surplus' if projected_capital_at_ret >= capital_needed else '⚠️ Shortfall'} €{abs(projected_capital_at_ret - capital_needed):,.0f}",
+              delta_color="normal" if projected_capital_at_ret >= capital_needed else "inverse",
+              help="Forward projection of your wealth at retirement age, growing at the pre-retirement return rate.")
+
+    k5, k6, k7, k8 = st.columns(4)
+    k5.metric("Years to Retirement", f"{years_to_ret} yr",
+              help=f"From age {ret_current_age} to {ret_age}.")
+    k6.metric("Savings Runway",
+              f"{runway_years} yr" if runway_years else "< 1 yr" if starting_capital >= capital_needed else "> 60 yr",
+              help="Years until your growing portfolio hits the capital needed, continuing at your current avg monthly savings.")
+    k7.metric("Portfolio Lasts (post-ret.)",
+              f"{depletion_years} yr" if depletion_years else f">{years_in_ret} yr ✅",
+              help="How long your projected capital sustains the pension gap at the post-retirement return rate.")
+    k8.metric("Net Replacement Ratio",
+              f"{replacement_ratio:.0f}%",
+              help="Target retirement income as % of current net household income. Aim for 70–80%.")
+
+    # ── Charts ───────────────────────────────────────────────────────────────
+    st.divider()
+
+    # Chart 1: Portfolio growth to retirement
+    st.markdown("#### 📈 Portfolio Growth to Retirement")
+    _yrs_axis  = list(range(0, years_to_ret + 1))
+    _portfolio_curve = [starting_capital]
+    _cap_c = starting_capital
+    _r_mo_c = (1 + ret_return_pre) ** (1/12) - 1
+    # use projected savings from df_m_a for first n_years, then avg
+    _proj_months = len(df_m_a)
+    _savings_list = list(df_m_a["Net Saving"])
+    _month_counter = 0
+    for _yr in range(1, years_to_ret + 1):
+        for _mo in range(12):
+            _s = _savings_list[_month_counter] if _month_counter < _proj_months else avg_monthly_saving
+            _cap_c = _cap_c * (1 + _r_mo_c) + _s
+            _month_counter += 1
+        _portfolio_curve.append(_cap_c)
+
+    fig_grow = go.Figure()
+    fig_grow.add_trace(go.Scatter(
+        x=[_dt_ret.date.today().year + y for y in _yrs_axis],
+        y=_portfolio_curve,
+        name="Projected Portfolio",
+        line=dict(color="#1d4ed8", width=2.5),
+        fill="tozeroy", fillcolor="rgba(29,78,216,0.08)"
+    ))
+    fig_grow.add_hline(y=capital_needed, line_dash="dash", line_color="#b91c1c",
+                       annotation_text=f"Capital needed  €{capital_needed:,.0f}",
+                       annotation_position="bottom right")
+    fig_grow.add_hline(y=fire_number, line_dash="dot", line_color="#b45309",
+                       annotation_text=f"FIRE number  €{fire_number:,.0f}",
+                       annotation_position="top right")
+    fig_grow.update_layout(
+        **chart_layout("Portfolio Growth to Retirement", "Portfolio value (€)", height=350,
+                       xaxis_title="Year")
+    )
+    st.plotly_chart(fig_grow, use_container_width=True)
+
+    # Chart 2: Retirement income waterfall
+    st.markdown("#### 💰 Retirement Income Breakdown")
+    fig_income = go.Figure(go.Bar(
+        x=["AOW (state)", "Occupational Pension", "Private Capital (SWR)", "Target"],
+        y=[ret_aow, ret_pension,
+           projected_capital_at_ret * ret_swr / 12,
+           ret_target_income],
+        marker_color=["#0f766e", "#1d4ed8", "#15803d", "#b91c1c"],
+        text=[f"€{v:,.0f}" for v in [
+            ret_aow, ret_pension,
+            projected_capital_at_ret * ret_swr / 12,
+            ret_target_income
+        ]],
+        textposition="outside",
+    ))
+    fig_income.update_layout(
+        **chart_layout("Monthly Retirement Income Sources vs Target", "€/mo", height=330),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_income, use_container_width=True)
+
+    # Chart 3: Portfolio depletion in retirement
+    st.markdown("#### 📉 Portfolio Depletion in Retirement")
+    _dep_yrs  = min(years_in_ret, 50)
+    _dep_curve = [projected_capital_at_ret]
+    _cap_d = projected_capital_at_ret
+    for _yr in range(_dep_yrs):
+        for _mo in range(12):
+            _cap_d = _cap_d * (1 + _r_mo_post) - _gap_mo
+        _dep_curve.append(max(_cap_d, 0))
+        if _cap_d <= 0:
+            _dep_curve += [0] * (_dep_yrs - _yr - 1)
+            break
+
+    fig_dep = go.Figure()
+    fig_dep.add_trace(go.Scatter(
+        x=[ret_age + y for y in range(len(_dep_curve))],
+        y=_dep_curve,
+        name="Remaining Capital",
+        line=dict(color="#15803d", width=2.5),
+        fill="tozeroy", fillcolor="rgba(21,128,61,0.08)"
+    ))
+    fig_dep.add_hline(y=0, line_color="#b91c1c", line_width=1)
+    fig_dep.update_layout(
+        **chart_layout("Portfolio Depletion in Retirement", "Remaining capital (€)", height=330,
+                       xaxis_title="Age")
+    )
+    st.plotly_chart(fig_dep, use_container_width=True)
+
+    # ── Sensitivity table ────────────────────────────────────────────────────
+    st.divider()
+    st.markdown("#### 🔢 Capital Needed — Sensitivity (Retirement Age × Target Income)")
+    st.caption(
+        "Shows the lump-sum capital required at retirement for each combination of "
+        "retirement age and target monthly income, at the current SWR. "
+        "Green = your projected capital covers it. Red = shortfall."
+    )
+    _ages     = [55, 60, 62, 65, 67, 70]
+    _incomes  = [2000, 2500, 3000, 3500, 4000, 5000]
+    _tbl_rows = []
+    for _age in _ages:
+        _row = [f"Age {_age}"]
+        for _inc in _incomes:
+            _gap  = max(_inc - pillar1_2, 0)
+            _cap  = _gap * 12 / ret_swr if ret_swr > 0 else 0
+            _ok   = projected_capital_at_ret >= _cap
+            _cell = f"€{_cap/1e6:.2f}M" if _cap >= 1e6 else f"€{_cap:,.0f}"
+            _row.append(("✅ " if _ok else "⚠️ ") + _cell)
+        _tbl_rows.append(_row)
+
+    _tbl_headers = [""] + [f"€{i:,}/mo" for i in _incomes]
+    _cw_sens = [1.5] + [1.0] * len(_incomes)
+    _cw_total = sum(_cw_sens)
+    _cw_sens_norm = [c / _cw_total for c in _cw_sens]
+
+    import pandas as _pd_ret
+    _sens_df = _pd_ret.DataFrame(_tbl_rows, columns=_tbl_headers)
+    st.dataframe(_sens_df, hide_index=True, use_container_width=True)
+
+    # ── Dutch pension explanations ────────────────────────────────────────────
+    st.divider()
+    with st.expander("📚 Dutch Pension System Explained", expanded=False):
+        st.markdown("""
+### The Three Pillars of Dutch Retirement
+
+| Pillar | What | Who | Amount |
+|--------|------|-----|--------|
+| **1e pijler — AOW** | State pension | Everyone with 50 years Dutch residency | ~€1,450/mo (single), ~€1,000/mo each (couple) |
+| **2e pijler — Occupational** | Employer pension fund | Most employees | Depends on salary × accrual rate × years |
+| **3e pijler — Private** | Own savings / investments | You | Unlimited (Box 3 taxed) |
+
+### AOW Calculation
+- Full AOW requires **50 years of residency** between ages 15 and 67.
+- Each missing year reduces AOW by **2%** (so 40 years = 80% of full AOW).
+- AOW age is currently **67**; expected to increase to 67y3mo in 2028.
+- Amount indexed annually; couples receive ~69% of single amount per person.
+
+### Occupational Pension (2e pijler)
+- Most Dutch employees participate via their sector's pension fund (e.g. ABP, PFZW, PMT).
+- Under **WTP (Wet Toekomst Pensioenen, 2023)** all funds are transitioning to defined contribution.
+- Check **[mijnpensioenoverzicht.nl](https://www.mijnpensioenoverzicht.nl)** for your accrued pension.
+- Typical accrual: 1.5–1.875% of pensionable salary per year (salary minus AOW franchise ≈ €17,000).
+
+### Safe Withdrawal Rate (SWR)
+- The **4% rule** (Bengen, 1994; Trinity Study) suggests withdrawing 4%/yr of your portfolio is sustainable for 30 years with a 50/50 stock-bond split.
+- For longer retirements (40–50 years) or all-equity, **3–3.5% is more conservative**.
+- Dutch context: Box 3 taxes on assets above €57,000 threshold reduce effective returns.
+
+### Box 3 Tax on Investments
+- The Dutch tax authority assumes a fictitious return on assets above the threshold.
+- **2026 rates** (indicative): savings ≈ 1.44% fictitious return, investments ≈ 5.88%, taxed at **36%**.
+- This reduces your effective after-tax return on invested capital — factor this into your pre-retirement return assumption.
+
+### Zorgtoeslag & AOW
+- AOW income counts toward the zorgtoeslag income test.
+- Full AOW recipients typically no longer qualify for zorgtoeslag.
+
+### Vermogensopbouw Tips
+- **Lijfrente (annuity savings)**: tax-deductible up to the annual reservation margin (jaarruimte).
+  - Jaarruimte = 30% × (income − AOW franchise) − pension accrual factor.
+- **Banksparen**: similar to lijfrente but bank-based, more flexible.
+- **Eigen woning**: home equity reduces the need for capital, but is illiquid.
+        """)
+
+    st.divider()
+    st.caption(
+        "⚠️ AOW amounts and rules as of 2026. Pension projections are illustrative — "
+        "check mijnpensioenoverzicht.nl for your actual accrued pension. "
+        "Tax treatment of Box 3 is subject to legislative change. "
+        "This is not financial advice."
+    )
