@@ -1144,31 +1144,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Cookie consent + GA4 — injected into main page (not iframe) ─────────────
-# components.html() renders inside an iframe which GA4 can't detect.
-# st.markdown with unsafe_allow_html injects directly into the Streamlit page.
-st.markdown("""
-<!-- Cookiebot — must be first to block GA4 until consent given -->
-<script id="Cookiebot"
-    src="https://consent.cookiebot.com/uc.js"
-    data-cbid="9a8a1f96-532b-419e-91f5-b97ad09fb925"
-    data-blockingmode="auto"
-    type="text/javascript">
-</script>
-
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-G80SRHNT8M"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-G80SRHNT8M', {
-    'anonymize_ip': true
-  });
-</script>
-""", unsafe_allow_html=True)
-
-_GA_ID = "G-G80SRHNT8M"  # kept for reference
+# ── Analytics injected via .streamlit/index.html (see that file) ─────────────
+# GA4 (G-G80SRHNT8M) and Cookiebot are in .streamlit/index.html
+# st.markdown strips <script> tags so index.html is the only reliable method.
 
 # ── Mobile CSS injection ─────────────────────────────────────────────────────────
 def _inject_mobile_css(narrow: bool) -> None:
