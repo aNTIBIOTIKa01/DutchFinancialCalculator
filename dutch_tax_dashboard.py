@@ -949,8 +949,8 @@ def _paid_gate(label: str = "Pro feature", icon: str = "🔒", compact: bool = F
 
 DEFAULTS = dict(
     # Income
-    inc_s=60000, inc_s_incl_vg=False, use_net_input=False, net_mo_input=3500,
-    use_net_input_p=False, net_mo_input_p=3500,
+    inc_s=60000, inc_s_incl_vg=False, use_net_input=True, net_mo_input=3500,
+    use_net_input_p=True, net_mo_input_p=3500,
     partner=False, inc_p=60000, sal_growth=0.02,
     sal_growth_p=0.02,
     ab_mode=False,
@@ -2033,7 +2033,7 @@ with tabs[0]:
             # ── 5 core metrics ────────────────────────────────────────────
             _owns = _d["already_owns"]
             _housing_cost = (_d["mp"] - _d["mri"]) if _owns else _d["rent"]
-            _housing_label = "Mortgage (net/mo)" if _owns else "Monthly Rental"
+            _housing_label = "Mortgage (net)" if _owns else "Monthly Rental"
             _housing_help  = (f"Net mortgage after MRI benefit on €{_d['loan']:,.0f} loan at {_d['mr']*100:.2f}%.")\
                              if _owns else "Monthly rent as configured in Setup."
             _total_exp = _d["fixed"] + _housing_cost
@@ -2041,13 +2041,13 @@ with tabs[0]:
 
             _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns(5)
             _mc1.metric("Total Income",
-                f"€{_d['total_net']:,.0f}/mo",
+                f"€{_d['total_net']:,.0f}",
                 help="Combined household net income after Box 1, ZVW, AHK and arbeidskorting.")
             _mc2.metric("Total Expenses",
-                f"€{_total_exp:,.0f}/mo",
+                f"€{_total_exp:,.0f}",
                 help=f"Fixed expenses €{_d['fixed']:,.0f} + {_housing_label.lower()} €{_housing_cost:,.0f}.")
             _mc3.metric(_housing_label,
-                f"€{_housing_cost:,.0f}/mo",
+                f"€{_housing_cost:,.0f}",
                 help=_housing_help)
             _mc4.metric("30% Ruling Expiring",
                 f"Jan {_d['ruling_exp']}" if _d["ruling_on"] else "—",
@@ -2057,7 +2057,7 @@ with tabs[0]:
                 ))
             _fcf_color = "normal" if _fcf >= 0 else "inverse"
             _mc5.metric("Free Cash Flow",
-                f"€{_fcf:,.0f}/mo",
+                f"€{_fcf:,.0f}",
                 delta="surplus ✅" if _fcf >= 0 else "deficit ⚠️",
                 delta_color=_fcf_color,
                 help=f"Income €{_d['total_net']:,.0f} minus total expenses €{_total_exp:,.0f}. "
@@ -2227,7 +2227,7 @@ Configure all inputs for your financial scenarios here. Every value you set flow
                 # ── Income entry mode toggle ──────────────────────────────────
                 _use_net_input = st.toggle(
                     "Enter monthly net income (what arrives in your bank)",
-                    value=sv.get("use_net_input", False),
+                    value=sv.get("use_net_input", True),
                     key=f"use_net_input_{lbl}",
                     help=(
                         "Tick this if you prefer to enter the monthly net amount you actually "
@@ -2302,7 +2302,7 @@ The ruling reduces your **Box 1 taxable income** and **ZVW** base. Only 70% (or 
 Salary cap (Balkenende-norm): max €246,000 taxable salary qualifies (2025 figure, indexed annually).
 The dashboard automatically applies the correct rate for each year based on your start year.
 """
-                ruling_s = st.checkbox("You have the 30% ruling",
+                ruling_s = st.checkbox("Do you have the 30% ruling?",
                     value=sv.get("ruling_s", True), key=f"ruling_s_{lbl}",
                     help=_RULING_HELP)
                 rs_s  = sv.get("rs_s",       sv.get("rs", 2026))
@@ -2344,9 +2344,9 @@ The dashboard automatically applies the correct rate for each year based on your
                     _implied_net = net_annual_calc(inc_s_raw, 2026, _a30_for_rev) / 12
                     st.caption(
                         f"Implied gross: **€{inc_s_raw:,.0f}/yr** · "
-                        f"Net check: **€{_implied_net:,.0f}/mo** "
-                        f"(target: €{_net_mo_input:,.0f}/mo) · "
-                        f"30% ruling: **{"on" if _a30_for_rev else "off"}**"
+                        f"Net check: **€{_implied_net:,.0f}/mo** (target: €{_net_mo_input:,.0f}/mo) · "
+                        f"30% ruling: **{"on ✓" if _a30_for_rev else "off"}** · "
+                        f"{"With ruling: lower gross needed to reach same net." if _a30_for_rev else "Without ruling: higher gross needed to reach same net."}"
                     )
 
                 partner = st.checkbox("Include partner income",
@@ -2359,7 +2359,7 @@ The dashboard automatically applies the correct rate for each year based on your
                     # ── Partner income entry mode ─────────────────────────────
                     _use_net_input_p = st.toggle(
                         "Enter partner's monthly net income (what arrives in their bank)",
-                        value=sv.get("use_net_input_p", False),
+                        value=sv.get("use_net_input_p", True),
                         key=f"use_net_input_p_{lbl}",
                         help=(
                             "Tick this to enter your partner's monthly net take-home pay instead of "
@@ -2386,7 +2386,7 @@ The dashboard automatically applies the correct rate for each year based on your
 
                     # ── Partner 30% ruling ───────────────────────────────────
                     st.markdown("**30% Ruling — Partner**")
-                    ruling_p = st.checkbox("Partner has the 30% ruling",
+                    ruling_p = st.checkbox("Does your partner have the 30% ruling?",
                         value=sv.get("ruling_p", False), key=f"ruling_p_{lbl}",
                         help=_RULING_HELP)
                     rs_p_start = sv.get("rs_p_start", sv.get("rs_p", 2026))
@@ -3181,90 +3181,90 @@ with tabs[1]:
     st.caption(f"Showing **{cur_lbl}** — current month in projection.")
     _has_kot = pa.get("n_kdv",0) > 0 or pa.get("n_bso",0) > 0
 
-    # ── All KPIs in one row ──────────────────────────────────────────────────
-    _km_cols = st.columns(5 if _has_kot else 4)
-    _km_cols[0].metric("💰 Net Income", f"€{cur_net:,.0f}",
-        help=f"Combined household net income in {cur_lbl} after Box 1 tax, ZVW, AHK, and arbeidskorting.")
-    _km_cols[1].metric("💸 Total Expenses", f"€{cur_exp:,.0f}",
-        help=f"All fixed expenses in {cur_lbl}: housing, categories from Setup, net of MRI and subsidy credits.")
-    _sav_sign = "surplus" if cur_sav >= 0 else "deficit"
-    _km_cols[2].metric("🏦 Potential Savings", f"€{cur_sav:,.0f}",
-        delta=_sav_sign, delta_color="normal" if cur_sav >= 0 else "inverse",
-        help=f"Net income minus total expenses in {cur_lbl}.")
-    _km_cols[3].metric("🎯 Current 30% Ruling Benefit", f"€{cur_ruling_ben:,.0f}",
-        help=f"Extra net income this month from the 30% ruling — the difference between your taxed-on-70% income (€{_nm_s_on:,.0f}/mo) and your income without the ruling (€{_nm_s_off:,.0f}/mo). Drops to zero when the ruling expires.")
+    # Pre-compute net-without-ruling for KPIs and waterfall
+    _wf_net_off     = _nm_s_off + (_nm_p_off if p["partner"] else 0)
+    _wf_benefit     = cur_net - _wf_net_off
+    _wf_exp         = cur_exp
+    _wf_surplus_off = _wf_net_off - _wf_exp   # free cashflow WITHOUT ruling
+    _wf_surplus_on  = cur_net - _wf_exp        # free cashflow WITH ruling
+    _ruling_on_now  = _a30_s_cur or _a30_p_cur
+
+    # ── Cashflow callout at the very top ────────────────────────────────────
+    if _wf_surplus_off >= 0:
+        st.success(
+            f"{'✅ 30% ruling active — ' if _ruling_on_now else ''}"
+            f"Without the ruling your income **€{_wf_net_off:,.0f}/mo** still covers "
+            f"expenses **€{_wf_exp:,.0f}/mo** — leaving **€{_wf_surplus_off:,.0f}/mo** free cashflow. "
+            + (f"The ruling adds **€{_wf_benefit:,.0f}/mo** on top (total free cashflow with ruling: **€{_wf_surplus_on:,.0f}/mo**)."
+               if _ruling_on_now else ""),
+            icon="💪"
+        )
+    else:
+        st.error(
+            f"{'⚠️ 30% ruling active — ' if _ruling_on_now else '⚠️ '}"
+            f"Without the ruling your income **€{_wf_net_off:,.0f}/mo** falls "
+            f"**€{abs(_wf_surplus_off):,.0f}/mo short** of expenses **€{_wf_exp:,.0f}/mo**. "
+            + (f"The ruling currently bridges this gap (free cashflow with ruling: **€{_wf_surplus_on:,.0f}/mo**). "
+               f"Plan ahead before Jan {_re_s}." if _ruling_on_now else
+               "Consider reducing expenses or increasing income."),
+            icon="🔔"
+        )
+
+    # ── KPIs: 1 income(with) · 2 ruling benefit · 3 income(without) · 4 expenses · 5 cashflow(without) ──
+    _on_icon  = "🟢" if _ruling_on_now else "⚪"  # green = ruling active, grey = off
+    _off_icon = "🔴" if _ruling_on_now else "⚪"  # red = ruling will expire / not active
+    _n_km = 6 if _has_kot else 5
+    _km_cols = st.columns(_n_km)
+
+    _km_cols[0].metric(f"{_on_icon} Income (with 30%)", f"€{cur_net:,.0f}",
+        help=f"Combined net income in {cur_lbl} {'with the 30% ruling active' if _ruling_on_now else '(ruling not active)'}.")
+    _km_cols[1].metric(f"{'🎯' if _ruling_on_now else '—'} 30% Ruling Benefit", f"€{_wf_benefit:,.0f}",
+        help=f"{'Extra income from the ruling — drops to zero at expiry.' if _ruling_on_now else 'No ruling active — benefit is zero.'} €{_nm_s_on:,.0f} (with) vs €{_nm_s_off:,.0f} (without).")
+    _km_cols[2].metric(f"{_off_icon} Income (without 30%)", f"€{_wf_net_off:,.0f}",
+        help=f"Net income in {cur_lbl} without the ruling — what you will take home after it expires.")
+    _km_cols[3].metric("💸 Expenses", f"€{_wf_exp:,.0f}",
+        help=f"All fixed expenses in {cur_lbl}: housing, categories from Setup, net of MRI credits.")
+    _savings_off_sign = "surplus ✅" if _wf_surplus_off >= 0 else "deficit ⚠️"
+    _km_cols[4].metric(f"{_off_icon} Cashflow (without 30%)", f"€{_wf_surplus_off:,.0f}",
+        delta=_savings_off_sign,
+        delta_color="normal" if _wf_surplus_off >= 0 else "inverse",
+        help=f"Income without ruling (€{_wf_net_off:,.0f}) − expenses (€{_wf_exp:,.0f}). Free cashflow after expiry.")
     if _has_kot:
-        _km_cols[4].metric("👶 Kinderopvangtoeslag", f"€{cur_kot:,.0f}",
+        _km_cols[5].metric("👶 Kinderopvangtoeslag", f"€{cur_kot:,.0f}",
             help="Monthly childcare benefit (dagopvang/BSO), income-tested.")
 
-    # ── 30% Ruling impact waterfall ─────────────────────────────────────────
-    if _a30_s_cur or _a30_p_cur:
-        st.divider()
-        st.markdown("#### 💡 30% Ruling Impact — Monthly Income vs Expenses")
-        st.caption(
-            "This waterfall shows your current monthly financial position with and without the 30% ruling. "
-            "If the 'Net without ruling' bar is still above zero, your income covers expenses after the ruling expires."
-        )
-        # Values for the waterfall
-        _wf_net_off  = _nm_s_off + (_nm_p_off if p["partner"] else 0)   # net income WITHOUT ruling
-        _wf_benefit  = cur_net - _wf_net_off                             # ruling benefit = difference
-        _wf_exp      = cur_exp                                           # total expenses
-
-        _wf_surplus_off = _wf_net_off - _wf_exp                         # leftover without ruling
-        _wf_surplus_on  = cur_net     - _wf_exp                         # leftover with ruling
-
-        fig_ruling_wf = go.Figure(go.Waterfall(
-            orientation="v",
-            measure=["absolute", "relative", "relative", "total"],
-            x=[
-                f"Net Income<br>(no ruling)",
-                f"30% Ruling<br>Benefit",
-                f"Total<br>Expenses",
-                f"Remaining<br>({'with' if _a30_s_cur else 'no'} ruling)",
-            ],
-            y=[_wf_net_off, _wf_benefit, -_wf_exp, 0],
-            text=[
-                f"€{_wf_net_off:,.0f}",
-                f"+€{_wf_benefit:,.0f}",
-                f"−€{_wf_exp:,.0f}",
-                f"€{_wf_surplus_on:,.0f}",
-            ],
-            textposition="outside",
-            connector=dict(line=dict(color="rgba(255,255,255,0.2)")),
-            increasing=dict(marker_color="#2ecc71"),
-            decreasing=dict(marker_color="#e74c3c"),
-            totals=dict(marker_color="#3498db"),
-        ))
-        # Add a horizontal line at 0 to make surplus/deficit obvious
-        fig_ruling_wf.add_hline(y=0, line_color="#f1c40f", line_width=1.5, line_dash="dot")
-        # Annotate the "without ruling" income level
-        fig_ruling_wf.add_hline(
-            y=_wf_net_off, line_color="#e74c3c", line_width=1, line_dash="dash",
-            annotation_text=f"Income without ruling: €{_wf_net_off:,.0f}",
-            annotation_position="bottom right",
-            annotation_font=dict(size=10, color="#e74c3c"),
-        )
-        fig_ruling_wf.update_layout(**chart_layout(
-            f"30% Ruling Impact — {cur_lbl}", "€/month", height=380
-        ))
-        st.plotly_chart(fig_ruling_wf, use_container_width=True, key="fig_ruling_waterfall")
-
-        # Plain-language callout based on surplus without ruling
-        if _wf_surplus_off >= 0:
-            st.success(
-                f"✅ Even without the 30% ruling your income (€{_wf_net_off:,.0f}/mo) "
-                f"covers total expenses (€{_wf_exp:,.0f}/mo) — leaving **€{_wf_surplus_off:,.0f}/mo** surplus. "
-                f"The ruling adds an extra €{_wf_benefit:,.0f}/mo on top.",
-                icon="💪"
-            )
-        else:
-            st.error(
-                f"⚠️ Without the 30% ruling your income (€{_wf_net_off:,.0f}/mo) "
-                f"would fall **€{abs(_wf_surplus_off):,.0f}/mo short** of expenses (€{_wf_exp:,.0f}/mo). "
-                f"The ruling currently bridges this gap. "
-                f"Consider reducing expenses or building savings before Jan {_re_s or ''}.",
-                icon="🔔"
-            )
+    # ── 30% Ruling impact waterfall (below KPIs) ────────────────────────────
+    st.divider()
+    fig_ruling_wf = go.Figure(go.Waterfall(
+        orientation="v",
+        measure=["absolute", "relative", "relative", "total"],
+        x=[
+            "Net Income<br>(with 30%)",
+            "− 30% Ruling<br>Benefit",
+            "− Total<br>Expenses",
+            "Free Cashflow<br>(without 30%)",
+        ],
+        y=[cur_net, -_wf_benefit, -_wf_exp, 0],
+        text=[
+            f"€{cur_net:,.0f}",
+            f"−€{_wf_benefit:,.0f}",
+            f"−€{_wf_exp:,.0f}",
+            f"€{_wf_surplus_off:,.0f}",
+        ],
+        textposition="outside",
+        connector=dict(line=dict(color="rgba(255,255,255,0.2)")),
+        increasing=dict(marker_color="#2ecc71"),
+        decreasing=dict(marker_color="#e74c3c"),
+        totals=dict(marker_color="#2ecc71" if _wf_surplus_off >= 0 else "#e74c3c"),
+    ))
+    fig_ruling_wf.add_hline(y=0, line_color="#f1c40f", line_width=1.5, line_dash="dot",
+        annotation_text="Break-even", annotation_position="bottom right",
+        annotation_font=dict(size=9, color="#f1c40f"))
+    fig_ruling_wf.update_layout(**chart_layout(
+        f"30% Ruling Impact — Free Cashflow after Expiry ({cur_lbl})",
+        "€/month", height=400
+    ))
+    st.plotly_chart(fig_ruling_wf, use_container_width=True, key="fig_ruling_waterfall")
 
     st.divider()
 
@@ -3287,6 +3287,13 @@ with tabs[1]:
 
     if show_actuals_overlay and not _has_overlay_data:
         st.caption("ℹ️ No actuals data found — enter data in the 📝 Actuals tab first.")
+
+    _explain = st.toggle(
+        "💬 Explain the data",
+        value=False,
+        key="income_explain_toggle",
+        help="Highlight and explain the most significant changes on the forecast chart."
+    )
 
     fig1 = go.Figure()
     fig1.add_trace(go.Scatter(x=df["Date"], y=df["Total Net"], name="Net Income",
@@ -3360,9 +3367,105 @@ with tabs[1]:
             fig1.add_annotation(x=_fe_xs, y=0.60 - (_fi * 0.09), xref="x", yref="paper",
                                 text=f"💸 {_fe['name']}", showarrow=False,
                                 xanchor="left", font=dict(color=_fe_col, size=10))
+    # ── Explain-the-data annotations ──────────────────────────────────────
+    _events_explained = []
+    if _explain:
+        _sym_colors = ["#f1c40f","#e67e22","#9b59b6","#1abc9c","#e74c3c","#3498db"]
+        _sym_idx = 0
+        # 1. 30% ruling expiry
+        _re_yr_exp = p.get("re_s", p["re"]) if p.get("ruling_s") else None
+        if _re_yr_exp:
+            _re_ts = pd.Timestamp(year=_re_yr_exp, month=1, day=1).strftime("%Y-%m-%d")
+            _net_before = net_monthly_calc(p["inc_s"]*(1+sg)**(_re_yr_exp-1-2026), _re_yr_exp-1, True)
+            _net_after  = net_monthly_calc(p["inc_s"]*(1+sg)**(_re_yr_exp-2026),   _re_yr_exp,   False)
+            _drop = _net_before - _net_after
+            _col = _sym_colors[_sym_idx % len(_sym_colors)]; _sym_idx += 1
+            fig1.add_shape(type="line", x0=_re_ts, x1=_re_ts, y0=0, y1=1,
+                           xref="x", yref="paper", line=dict(dash="dash", color=_col, width=2))
+            fig1.add_annotation(x=_re_ts, y=0.97, xref="x", yref="paper",
+                                text="① Ruling expires", showarrow=False,
+                                xanchor="left", font=dict(color=_col, size=10))
+            _events_explained.append((
+                "①", f"30% Ruling expires (Jan {_re_yr_exp})",
+                f"Your 30% ruling ends in January {_re_yr_exp}. Net income drops by "
+                f"**€{_drop:,.0f}/mo** (€{_net_before:,.0f} → €{_net_after:,.0f}/mo). "
+                f"Build a savings buffer during the ruling period to absorb this reduction.",
+                _col
+            ))
+        # 2. House purchase
+        _buy_ts_exp = pd.Timestamp(year=p["by"], month=p["bm"], day=1)
+        if _buy_ts_exp >= df["Date"].iloc[0] and _buy_ts_exp <= df["Date"].iloc[-1]:
+            _buy_ts_str = _buy_ts_exp.strftime("%Y-%m-%d")
+            _mp_net = mort_payment(p["house_price"], p["dp"], p["mort_rate"]) - \
+                      amortisation_schedule(p["house_price"], p["dp"], p["mort_rate"])["MRI_Benefit"].iloc[0]
+            _col = _sym_colors[_sym_idx % len(_sym_colors)]; _sym_idx += 1
+            fig1.add_shape(type="line", x0=_buy_ts_str, x1=_buy_ts_str, y0=0, y1=1,
+                           xref="x", yref="paper", line=dict(dash="dash", color=_col, width=2))
+            fig1.add_annotation(x=_buy_ts_str, y=0.88, xref="x", yref="paper",
+                                text="② House purchase", showarrow=False,
+                                xanchor="left", font=dict(color=_col, size=10))
+            _buy_cost = p["house_price"] * 0.02 + 3500
+            _events_explained.append((
+                "②", f"House purchase ({_buy_ts_exp.strftime('%B %Y')})",
+                f"Down payment **€{p['house_price']*p['dp']:,.0f}** + buying costs **€{_buy_cost:,.0f}** "
+                f"deducted from savings. Rent (€{p['rent']:,.0f}/mo) replaced by net mortgage "
+                f"(€{_mp_net:,.0f}/mo after MRI). Expenses change from this month.",
+                _col
+            ))
+        # 3. Future recurring expenses
+        _seen_fe = set()
+        for _fi2, _fe2 in enumerate(p.get("future_expenses", [])):
+            if _fe2["start_ym"] not in _seen_fe:
+                _seen_fe.add(_fe2["start_ym"])
+                try:
+                    _fe_ts2 = pd.Timestamp(_fe2["start_ym"] + "-01")
+                    _col = _sym_colors[_sym_idx % len(_sym_colors)]; _sym_idx += 1
+                    _sym_num = _sym_idx + 1
+                    fig1.add_annotation(x=_fe_ts2.strftime("%Y-%m-%d"), y=0.75 - (_fi2*0.08),
+                                        xref="x", yref="paper",
+                                        text=f"③ {_fe2['name']}", showarrow=False,
+                                        xanchor="left", font=dict(color=_col, size=10))
+                    _events_explained.append((
+                        "③", f"Future expense starts: {_fe2['name']} ({_fe2['start_ym']})",
+                        f"**€{_fe2['amount']:,.0f}/mo** recurring expense begins. "
+                        f"Grows at {_fe2.get('growth',0)*100:.1f}%/yr. "
+                        + (f"Ends {_fe2['end_ym']}." if _fe2.get('end_ym') else "Ongoing."),
+                        _col
+                    ))
+                except Exception:
+                    pass
+        # 4. Salary growth steps (show every 2 years if growth > 0)
+        if sg > 0:
+            _ys = sorted(df["Year"].unique())
+            for _yi, _yr_g in enumerate(_ys[2::2]):   # every 2nd year from year 3
+                _col = _sym_colors[_sym_idx % len(_sym_colors)]; _sym_idx += 1
+                _yr_net = net_monthly_calc(p["inc_s"]*(1+sg)**(_yr_g-2026), _yr_g, 
+                    p.get("ruling_s", True) and p.get("rs_s", 2026) <= _yr_g < p.get("re_s", 2031))
+                _events_explained.append((
+                    f"📈", f"Salary growth by {_yr_g}",
+                    f"At {sg*100:.1f}%/yr growth, gross reaches €{p['inc_s']*(1+sg)**(_yr_g-2026):,.0f} "
+                    f"by {_yr_g} — net income ≈ €{_yr_net:,.0f}/mo.",
+                    _col
+                ))
+                if _yi >= 1: break   # max 2 salary annotations
+
     fig1.update_layout(**chart_layout("Monthly Income vs Expenses — Forecast" +
                                       (" + Actuals" if _has_overlay_data else ""), height=420))
     st.plotly_chart(fig1, use_container_width=True, key="fig_income_tax_1")
+
+    # ── Explanation table below chart ────────────────────────────────────────
+    if _explain and _events_explained:
+        st.markdown("**📋 Key events on the chart:**")
+        with st.container():
+            for _sym2, _title2, _desc2, _ecol in _events_explained:
+                st.markdown(
+                    f"<div style='margin-left:24px;display:flex;gap:12px;align-items:flex-start;"
+                    f"padding:8px 0;border-bottom:1px solid #2a2a4a'>"
+                    f"<span style='font-size:16px;color:{_ecol};min-width:24px'>{_sym2}</span>"
+                    f"<div><b style='color:#e0e0e0'>{_title2}</b><br>"
+                    f"<span style='color:#aaa;font-size:13px'>{_desc2}</span></div></div>",
+                    unsafe_allow_html=True
+                )
 
     cl, cr = st.columns(2)
     n_p = 2 if p["partner"] else 1
