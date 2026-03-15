@@ -1144,6 +1144,34 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── Cookie consent (Cookiebot) — must load before GA4 ───────────────────────
+import streamlit.components.v1 as _components
+_components.html("""
+<script id="Cookiebot"
+    src="https://consent.cookiebot.com/uc.js"
+    data-cbid="9a8a1f96-532b-419e-91f5-b97ad09fb925"
+    data-blockingmode="auto"
+    type="text/javascript">
+</script>
+""", height=0)
+
+# ── Google Analytics 4 ───────────────────────────────────────────────────────
+# Replace G-XXXXXXXXXX with your GA4 Measurement ID from analytics.google.com
+_GA_ID = os.environ.get("GA_MEASUREMENT_ID", "G-G80SRHNT8M")
+if _GA_ID:
+    _components.html(f"""
+    <script async src="https://www.googletagmanager.com/gtag/js?id={_GA_ID}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){{dataLayer.push(arguments);}}
+        gtag('js', new Date());
+        gtag('config', '{_GA_ID}', {{
+            'anonymize_ip': true,
+            'cookie_flags': 'SameSite=None;Secure'
+        }});
+    </script>
+    """, height=0)
+
 # ── Mobile CSS injection ─────────────────────────────────────────────────────────
 def _inject_mobile_css(narrow: bool) -> None:
     """Inject CSS that adapts layout to narrow/mobile screens."""
