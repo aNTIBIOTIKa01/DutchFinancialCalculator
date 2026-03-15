@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    {%metas%}
+    <title>{%title%}</title>
+    {%favicon%}
+    {%css%}
+
+    <!-- Cookiebot — must load before GA4 to block tracking until consent -->
+    <script id="Cookiebot"
+        src="https://consent.cookiebot.com/uc.js"
+        data-cbid="9a8a1f96-532b-419e-91f5-b97ad09fb925"
+        data-blockingmode="auto"
+        type="text/javascript">
+    </script>
+
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-G80SRHNT8M"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-G80SRHNT8M', {
+        'anonymize_ip': true
+      });
+    </script>
+
+  </head>
+  <body>
+    {%app%}
+    {%scripts%}
+  </body>
+</html>
