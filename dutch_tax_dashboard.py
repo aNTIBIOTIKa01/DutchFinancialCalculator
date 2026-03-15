@@ -1144,33 +1144,31 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Cookie consent (Cookiebot) — must load before GA4 ───────────────────────
-import streamlit.components.v1 as _components
-_components.html("""
+# ── Cookie consent + GA4 — injected into main page (not iframe) ─────────────
+# components.html() renders inside an iframe which GA4 can't detect.
+# st.markdown with unsafe_allow_html injects directly into the Streamlit page.
+st.markdown("""
+<!-- Cookiebot — must be first to block GA4 until consent given -->
 <script id="Cookiebot"
     src="https://consent.cookiebot.com/uc.js"
     data-cbid="9a8a1f96-532b-419e-91f5-b97ad09fb925"
     data-blockingmode="auto"
     type="text/javascript">
 </script>
-""", height=0)
 
-# ── Google Analytics 4 ───────────────────────────────────────────────────────
-# Replace G-XXXXXXXXXX with your GA4 Measurement ID from analytics.google.com
-_GA_ID = os.environ.get("GA_MEASUREMENT_ID", "G-G80SRHNT8M")
-if _GA_ID:
-    _components.html(f"""
-    <script async src="https://www.googletagmanager.com/gtag/js?id={_GA_ID}"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){{dataLayer.push(arguments);}}
-        gtag('js', new Date());
-        gtag('config', '{_GA_ID}', {{
-            'anonymize_ip': true,
-            'cookie_flags': 'SameSite=None;Secure'
-        }});
-    </script>
-    """, height=0)
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-G80SRHNT8M"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-G80SRHNT8M', {
+    'anonymize_ip': true
+  });
+</script>
+""", unsafe_allow_html=True)
+
+_GA_ID = "G-G80SRHNT8M"  # kept for reference
 
 # ── Mobile CSS injection ─────────────────────────────────────────────────────────
 def _inject_mobile_css(narrow: bool) -> None:
