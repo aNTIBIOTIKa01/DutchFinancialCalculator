@@ -1143,47 +1143,7 @@ st.set_page_config(
     page_icon="🇳🇱",
     initial_sidebar_state="expanded",
 )
-
-# ── Analytics ────────────────────────────────────────────────────────────────
-# GA4 + Cookiebot are injected via .streamlit/index.html
-# This is the only method that reliably places scripts in the parent page on
-# Streamlit Community Cloud. See .streamlit/index.html in the repo root.
-import streamlit.components.v1 as _components
-_components.html("""
-<script>
-(function() {
-    var p = window.parent.document;
-    if (p.getElementById('ga4-init')) return;  // already injected
-
-    // Cookiebot — consent banner (blocks GA4 until user accepts)
-    var cb = p.createElement('script');
-    cb.id = 'cookiebot-banner';
-    cb.src = 'https://consent.cookiebot.com/uc.js';
-    cb.setAttribute('data-cbid', '9a8a1f96-532b-419e-91f5-b97ad09fb925');
-    cb.setAttribute('data-blockingmode', 'auto');
-    cb.type = 'text/javascript';
-    p.head.appendChild(cb);
-
-    // GA4 loader
-    var ga = p.createElement('script');
-    ga.id = 'ga4-loader';
-    ga.async = true;
-    ga.src = 'https://www.googletagmanager.com/gtag/js?id=G-G80SRHNT8M';
-    p.head.appendChild(ga);
-
-    // GA4 init
-    var gi = p.createElement('script');
-    gi.id = 'ga4-init';
-    gi.text = [
-        'window.dataLayer=window.dataLayer||[];',
-        'function gtag(){dataLayer.push(arguments);}',
-        'gtag("js",new Date());',
-        'gtag("config","G-G80SRHNT8M",{"anonymize_ip":true});'
-    ].join('');
-    p.head.appendChild(gi);
-})();
-</script>
-""", height=0)
+# Analytics (GA4 + Cookiebot) are injected via .streamlit/index.html
 
 # ── Mobile CSS injection ─────────────────────────────────────────────────────────
 def _inject_mobile_css(narrow: bool) -> None:
