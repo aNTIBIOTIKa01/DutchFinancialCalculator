@@ -970,6 +970,7 @@ DEFAULTS = dict(
     global_inflation=0.0,
     # House sale
     sell_house=True, sy=2032, sm=1,
+    already_owns=False, current_home_value=400000,
     # Childcare
     n_kdv=0, n_bso=0, kdv_hrs=None, bso_hrs=None,
     kdv_rate=None, bso_rate=None,
@@ -1527,16 +1528,37 @@ def amortisation_schedule(price, dp, rate, mort_type="Annuity (annuïteit)", yrs
 def run_sim(p):
     n_months = p.get("n_years", 5) * 12
     months   = pd.date_range(start="2026-01-01", periods=n_months, freq="MS")
-    mp       = mort_payment(p["house_price"], p["dp"], p["mort_rate"])   # annuity fixed payment
-    loan     = p["house_price"] * (1 - p["dp"])
-    costs    = p["house_price"] * 0.02 + 3500   # overdrachtsbelasting + notaris
-
-    mb        = loan
-    buy_cash  = p["savings"]          # start with full savings; dp+costs deducted in purchase month
-    rent_cash = p["savings"]
-    mo_owned  = 0
-    house_sold   = False   # latched True after sell event; prevents house reappearing
-    purchase_done = False  # latched True once dp+costs have been deducted
+    already_owns  = p.get("already_owns", False)
+    if already_owns:
+        # Owner: start with current home value and approximate remaining mortgage
+        # house_price = original purchase price; current_home_value = today's value
+        _chv  = p.get("current_home_value", p["house_price"])
+        mp    = mort_payment(p["house_price"], p["dp"], p["mort_rate"])
+        loan  = p["house_price"] * (1 - p["dp"])
+        costs = 0   # buying costs already paid
+        # Approximate remaining balance (assume owned since by/bm)
+        _months_owned = max(0, (2026 - p.get("by", 2024)) * 12
+                             + (1  - p.get("bm", 1)))
+        _df_amort = amortisation_schedule(p["house_price"], p["dp"], p["mort_rate"],
+                                           p.get("mort_type", "Annuity (annuïteit)"), 30)
+        mb    = _df_amort.iloc[min(_months_owned, len(_df_amort)-1)]["Balance"]
+        # Start with current home value as equity base; savings remain as cash
+        buy_cash  = p["savings"]
+        rent_cash = p["savings"]
+        hv        = _chv
+        purchase_done = True   # already purchased
+        mo_owned  = _months_owned + 1
+    else:
+        mp       = mort_payment(p["house_price"], p["dp"], p["mort_rate"])
+        loan     = p["house_price"] * (1 - p["dp"])
+        costs    = p["house_price"] * 0.02 + 3500
+        mb        = loan
+        buy_cash  = p["savings"]
+        rent_cash = p["savings"]
+        hv        = 0
+        mo_owned  = 0
+        purchase_done = False
+    house_sold   = False
     main, buy_r, rent_r = [], [], []
 
     for dt in months:
@@ -1890,6 +1912,176 @@ with tabs[0]:
     else:
         ab_mode = False
         _paid_gate("Scenario A/B Comparison", icon="🔀", compact=True)
+
+    # ── Live Quick Summary (reads from session_state — updates on every widget change) ──
+    def _live_summary(lbl, sv_):
+        """Compute a full snapshot dict from live session_state values."""
+        ss = st.session_state
+        # Income
+        _use_net   = ss.get(f"use_net_input_{lbl}",   sv_.get("use_net_input",  False))
+        _ruling_s  = ss.get(f"ruling_s_{lbl}",         sv_.get("ruling_s",       True))
+        _ruling_p  = ss.get(f"ruling_p_{lbl}",         sv_.get("ruling_p",       False))
+        _rs_s      = ss.get(f"rs_s_start_{lbl}",       sv_.get("rs_s_start",     2023))
+        _re_s      = _rs_s + 5
+        _rs_p      = ss.get(f"rs_p_start_{lbl}",       sv_.get("rs_p_start",     2023))
+        _re_p      = _rs_p + 5
+        _partner   = ss.get(f"pt_{lbl}",               sv_.get("partner",        False))
+        _use_net_p = ss.get(f"use_net_input_p_{lbl}",  sv_.get("use_net_input_p",False))
+        _a30_s     = _ruling_s and _rs_s <= 2026 < _re_s
+        _a30_p     = _ruling_p and _rs_p <= 2026 < _re_p
+
+        if _use_net:
+            _nm  = ss.get(f"net_mo_input_{lbl}", sv_.get("net_mo_input", 3500))
+            _lo, _hi = 1000.0, 500000.0
+            for _ in range(40):
+                _m = (_lo + _hi) / 2
+                if net_annual_calc(_m, 2026, _a30_s) < _nm * 12:
+                    _lo = _m
+                else:
+                    _hi = _m
+            _inc_s = round(_lo)
+            _net_s = net_monthly_calc(_inc_s, 2026, _a30_s)
+        else:
+            _inc_s = ss.get(f"inc_s_{lbl}", sv_.get("inc_s", 72000))
+            _net_s = net_monthly_calc(_inc_s, 2026, _a30_s)
+
+        if _partner:
+            if _use_net_p:
+                _nm_p = ss.get(f"net_mo_input_p_{lbl}", sv_.get("net_mo_input_p", 3500))
+                _lo_p, _hi_p = 1000.0, 500000.0
+                for _ in range(40):
+                    _mp2 = (_lo_p + _hi_p) / 2
+                    if net_annual_calc(_mp2, 2026, _a30_p) < _nm_p * 12:
+                        _lo_p = _mp2
+                    else:
+                        _hi_p = _mp2
+                _inc_p = round(_lo_p)
+                _net_p = net_monthly_calc(_inc_p, 2026, _a30_p)
+            else:
+                _inc_p = ss.get(f"inc_p_{lbl}", sv_.get("inc_p", 92000))
+                _net_p = net_monthly_calc(_inc_p, 2026, _a30_p)
+        else:
+            _net_p = 0
+
+        # Housing
+        _owns = ss.get(f"already_owns_{lbl}", sv_.get("already_owns", False))
+        _chv  = ss.get(f"chv_{lbl}",  sv_.get("current_home_value", 400000))
+        _hp   = ss.get(f"hp_{lbl}",  sv_.get("house_price", 400000))
+        _dp   = ss.get(f"dp_{lbl}",  int(sv_.get("dp", 0.0) * 100)) / 100
+        _mr   = ss.get(f"mr_{lbl}",  sv_.get("mort_rate", 0.040) * 100) / 100
+        _rent = ss.get(f"rent_{lbl}",sv_.get("rent", 1500))
+        _mp   = mort_payment(_hp, _dp, _mr)
+        try:
+            _mri = amortisation_schedule(_hp, _dp, _mr)["MRI_Benefit"].iloc[0]
+        except Exception:
+            _mri = 0
+        _loan = _hp * (1 - _dp)
+
+        # Expenses
+        _fixed = sum(ss.get(f"{k}_{lbl}", sv_.get(k, d)) for k, d in [
+            ("hi",150),("cf",80),("ci",80),("gr",350),("ot",250),
+            ("utilities",150),("phone",40),("subscriptions",40),("gym",30),("dog",0)])
+
+        # Projection
+        _sav  = ss.get(f"sv_{lbl}",  sv_.get("savings", 50000))
+        _ny   = ss.get(f"ny_{lbl}",  sv_.get("n_years", 10))
+        _ha   = ss.get(f"ha_{lbl}",  sv_.get("ha", 0.03) * 100) / 100
+        _ir   = ss.get(f"ir_{lbl}",  sv_.get("ir", 0.05) * 100)
+        _dp_amt = _hp * _dp
+        _buy_cost = _hp * 0.02 + 3500
+
+        # Derived
+        _total_net   = _net_s + _net_p
+        _surplus     = _total_net - _fixed - _rent
+        _surplus_buy = _total_net - _fixed - (_mp - _mri)
+        _ruling_on   = _a30_s or _a30_p
+        _ruling_exp  = min(x for x in [_re_s if _ruling_s else 9999,
+                                        _re_p if _ruling_p else 9999] if x < 9999) if _ruling_on else None
+
+        # 30% ruling benefit
+        _net_s_off = net_monthly_calc(_inc_s if not _use_net else ss.get(f"net_mo_input_{lbl}", 3500)*12/1, 2026, False)
+        _ruling_ben = (_net_s - net_monthly_calc(_inc_s, 2026, False)) if _a30_s else 0
+
+        return dict(
+            net_s=_net_s, net_p=_net_p, total_net=_total_net,
+            inc_s=_inc_s, partner=_partner,
+            fixed=_fixed, rent=_rent, mp=_mp, mri=_mri, loan=_loan,
+            hp=_hp, dp=_dp, dp_amt=_dp_amt, buy_cost=_buy_cost, mr=_mr,
+            surplus_rent=_surplus, surplus_buy=_surplus_buy,
+            savings=_sav, ny=_ny, ha=_ha, ir=_ir,
+            ruling_on=_ruling_on, ruling_exp=_ruling_exp, ruling_ben=_ruling_ben,
+            a30_s=_a30_s, a30_p=_a30_p,
+            already_owns=_owns, current_home_value=_chv,
+        )
+
+    st.divider()
+    _sum_labels = ["A", "B"] if ab_mode else ["A"]
+    _sum_svs    = [saved_A, saved_B] if ab_mode else [saved_A]
+    _sum_cols   = st.columns(2) if ab_mode else st.columns(1)
+
+    for _si, (_slbl, _ssv) in enumerate(zip(_sum_labels, _sum_svs)):
+        _d = _live_summary(_slbl, _ssv)
+        _color  = "#2ecc71" if _slbl == "A" else "#3498db"
+        _sname  = st.session_state.get(f"scen_label_{_slbl}", _ssv.get("scenario_label","")) or "Current Situation"
+        with _sum_cols[_si]:
+            st.markdown(
+                f"<div style='font-weight:700;font-size:15px;color:{_color};"
+                f"margin-bottom:6px;border-bottom:2px solid {_color};padding-bottom:4px'>"
+                f"📌 {_sname}</div>",
+                unsafe_allow_html=True
+            )
+            # ── 5 core metrics ────────────────────────────────────────────
+            _owns = _d["already_owns"]
+            _housing_cost = (_d["mp"] - _d["mri"]) if _owns else _d["rent"]
+            _housing_label = "Mortgage (net/mo)" if _owns else "Monthly Rental"
+            _housing_help  = (f"Net mortgage after MRI benefit on €{_d['loan']:,.0f} loan at {_d['mr']*100:.2f}%.")\
+                             if _owns else "Monthly rent as configured in Setup."
+            _total_exp = _d["fixed"] + _housing_cost
+            _fcf       = _d["total_net"] - _total_exp
+
+            _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns(5)
+            _mc1.metric("Total Income",
+                f"€{_d['total_net']:,.0f}/mo",
+                help="Combined household net income after Box 1, ZVW, AHK and arbeidskorting.")
+            _mc2.metric("Total Expenses",
+                f"€{_total_exp:,.0f}/mo",
+                help=f"Fixed expenses €{_d['fixed']:,.0f} + {_housing_label.lower()} €{_housing_cost:,.0f}.")
+            _mc3.metric(_housing_label,
+                f"€{_housing_cost:,.0f}/mo",
+                help=_housing_help)
+            _mc4.metric("30% Ruling Expiring",
+                f"Jan {_d['ruling_exp']}" if _d["ruling_on"] else "—",
+                help=(
+                    f"Ruling expires Jan {_d['ruling_exp']} — monthly net drops €{_d['ruling_ben']:,.0f} at expiry."
+                    if _d["ruling_on"] else "No 30% ruling active."
+                ))
+            _fcf_color = "normal" if _fcf >= 0 else "inverse"
+            _mc5.metric("Free Cash Flow",
+                f"€{_fcf:,.0f}/mo",
+                delta="surplus ✅" if _fcf >= 0 else "deficit ⚠️",
+                delta_color=_fcf_color,
+                help=f"Income €{_d['total_net']:,.0f} minus total expenses €{_total_exp:,.0f}. "
+                     f"Positive = money left to save or invest each month.")
+
+            # ── Context card: owns vs renting ─────────────────────────────
+            if _owns:
+                _chv = _d["current_home_value"]
+                st.caption(
+                    f"🏠 **Homeowner** — current estimated value **€{_chv:,}** · "
+                    f"mortgage net/mo **€{_d['mp']-_d['mri']:,.0f}** (gross €{_d['mp']:,.0f} − MRI €{_d['mri']:,.0f}) · "
+                    f"Appreciation at {_d['ha']*100:.1f}%/yr over {_d['ny']} yr → "
+                    f"estimated value **€{_chv * (1 + _d['ha']) ** _d['ny']:,.0f}**"
+                )
+            else:
+                st.caption(
+                    f"🏘️ **Renting** — €{_d['rent']:,.0f}/mo · "
+                    f"Buying at €{_d['hp']:,} requires €{_d['dp_amt']+_d['buy_cost']:,.0f} upfront · "
+                    f"mortgage net **€{_d['mp']-_d['mri']:,.0f}/mo** after MRI · "
+                    f"projection: {_d['ny']} yr at {_d['ha']*100:.1f}%/yr appreciation"
+                )
+
+    st.divider()
+
     with st.expander("ℹ️ How do these inputs flow through the dashboard?", expanded=False):
         st.markdown("""
 Configure all inputs for your financial scenarios here. Every value you set flows through to **all other tabs**:
@@ -1933,44 +2125,105 @@ Configure all inputs for your financial scenarios here. Every value you set flow
 
             sv = saved_A if lbl == "A" else saved_B
 
-            # ── Pre-compute collapsed-label summaries from saved values ────
-            def _sv_net(sv_):
-                """Combined net monthly income for the collapsed label, using saved values."""
-                _a30s = sv_.get("ruling_s", True)  and sv_.get("rs_s", sv_.get("rs", 2026)) <= 2026 < sv_.get("re_s", sv_.get("re", 2029))
-                _a30p = sv_.get("ruling_p", False) and sv_.get("rs_p", sv_.get("rs", 2026)) <= 2026 < sv_.get("re_p", sv_.get("re", 2029))
-                _ns = net_monthly_calc(sv_.get("inc_s", 72000), 2026, _a30s)
-                _np = net_monthly_calc(sv_.get("inc_p", 92000), 2026, _a30p) if sv_.get("partner", False) else 0
-                return _ns + _np
-            def _sv_fixed(sv_):
-                return (sv_.get("hi",420) + sv_.get("cf",100) + sv_.get("ci",100)
-                      + sv_.get("gr",400) + sv_.get("ot",300) + sv_.get("utilities",200)
-                      + sv_.get("phone",50) + sv_.get("subscriptions",50)
-                      + sv_.get("gym",40)   + sv_.get("dog",150))
-            def _sv_mortgage(sv_):
-                return mort_payment(sv_.get("house_price",550000), sv_.get("dp",0.10), sv_.get("mort_rate",0.045))
-            def _sv_fe_total(sv_):
-                return sum(fe.get("amount",0) for fe in sv_.get("future_expenses",[]))
-            _lbl_income   = f"👤 People & Income — €{_sv_net(sv):,.0f}/mo net"
-            def _sv_mri(sv_):
-                try:
-                    return amortisation_schedule(sv_.get("house_price",550000),
-                        sv_.get("dp",0.10), sv_.get("mort_rate",0.045))["MRI_Benefit"].iloc[0]
-                except Exception:
-                    return 0
-            _lbl_housing  = (f"🏠 Housing & Mortgage — "
-                             f"€{sv.get('house_price',550000):,} · "
-                             f"€{_sv_mortgage(sv):,.0f}/mo gross · "
-                             f"€{_sv_mri(sv):,.0f}/mo MRI benefit · "
-                             f"{sv.get('mort_rate',0.045)*100:.1f}% rate")
-            _lbl_expenses = f"🧾 Monthly Expenses — €{_sv_fixed(sv):,.0f}/mo total"
-            _lbl_proj     = f"📈 Projection Assumptions — {sv.get('n_years',5)}yr · {sv.get('ha',0.03)*100:.1f}% appreciation · {sv.get('ir',0.05)*100:.1f}% return"
-            _lbl_future   = f"🍼 Future Recurring Expenses — {len(sv.get('future_expenses',[]))} item(s), €{_sv_fe_total(sv):,.0f}/mo at start"
+            # ── Live collapsed-label summaries (read from session_state widget keys) ────
+            # Session state is populated the moment a widget renders, so these values
+            # update immediately when the user changes any input — no save required.
+            ss = st.session_state   # shorthand
+
+            # Income: prefer net-input toggle → use stored net directly; else calc from gross
+            _live_use_net   = ss.get(f"use_net_input_{lbl}", sv.get("use_net_input", False))
+            _live_ruling_s  = ss.get(f"ruling_s_{lbl}",     sv.get("ruling_s", True))
+            _live_ruling_p  = ss.get(f"ruling_p_{lbl}",     sv.get("ruling_p", False))
+            _live_rs_s      = ss.get(f"rs_s_start_{lbl}",   sv.get("rs_s_start", 2023))
+            _live_re_s      = _live_rs_s + 5
+            _live_rs_p      = ss.get(f"rs_p_start_{lbl}",   sv.get("rs_p_start", 2023))
+            _live_re_p      = _live_rs_p + 5
+            _live_partner   = ss.get(f"pt_{lbl}",           sv.get("partner", False))
+            _live_use_net_p = ss.get(f"use_net_input_p_{lbl}", sv.get("use_net_input_p", False))
+
+            if _live_use_net:
+                # Net mode: reverse-calc gross to get correct net
+                _lv_net_mo   = ss.get(f"net_mo_input_{lbl}", sv.get("net_mo_input", 3500))
+                _lv_a30_s    = _live_ruling_s and _live_rs_s <= 2026 < _live_re_s
+                _lv_lo, _lv_hi = 1000.0, 500000.0
+                for _ in range(50):
+                    _lv_mid = (_lv_lo + _lv_hi) / 2
+                    if net_annual_calc(_lv_mid, 2026, _lv_a30_s) < _lv_net_mo * 12:
+                        _lv_lo = _lv_mid
+                    else:
+                        _lv_hi = _lv_mid
+                _lv_inc_s = round(_lv_lo)
+                _lv_net_s = net_monthly_calc(_lv_inc_s, 2026, _lv_a30_s)
+            else:
+                _lv_inc_s  = ss.get(f"inc_s_{lbl}",  sv.get("inc_s", 72000))
+                _lv_a30_s  = _live_ruling_s and _live_rs_s <= 2026 < _live_re_s
+                _lv_net_s  = net_monthly_calc(_lv_inc_s, 2026, _lv_a30_s)
+
+            if _live_partner:
+                if _live_use_net_p:
+                    _lv_net_mo_p  = ss.get(f"net_mo_input_p_{lbl}", sv.get("net_mo_input_p", 3500))
+                    _lv_a30_p     = _live_ruling_p and _live_rs_p <= 2026 < _live_re_p
+                    _lv_lo_p, _lv_hi_p = 1000.0, 500000.0
+                    for _ in range(50):
+                        _lv_mid_p = (_lv_lo_p + _lv_hi_p) / 2
+                        if net_annual_calc(_lv_mid_p, 2026, _lv_a30_p) < _lv_net_mo_p * 12:
+                            _lv_lo_p = _lv_mid_p
+                        else:
+                            _lv_hi_p = _lv_mid_p
+                    _lv_inc_p = round(_lv_lo_p)
+                    _lv_net_p = net_monthly_calc(_lv_inc_p, 2026, _lv_a30_p)
+                else:
+                    _lv_inc_p = ss.get(f"inc_p_{lbl}", sv.get("inc_p", 92000))
+                    _lv_a30_p = _live_ruling_p and _live_rs_p <= 2026 < _live_re_p
+                    _lv_net_p = net_monthly_calc(_lv_inc_p, 2026, _lv_a30_p)
+            else:
+                _lv_net_p = 0
+
+            _lv_hp   = ss.get(f"hp_{lbl}",  sv.get("house_price", 550000))
+            _lv_dp   = ss.get(f"dp_{lbl}",  int(sv.get("dp",0.10)*100)) / 100
+            _lv_mr   = ss.get(f"mr_{lbl}",  sv.get("mort_rate",0.045)*100) / 100
+            _lv_mort = mort_payment(_lv_hp, _lv_dp, _lv_mr)
+            try:
+                _lv_mri = amortisation_schedule(_lv_hp, _lv_dp, _lv_mr)["MRI_Benefit"].iloc[0]
+            except Exception:
+                _lv_mri = 0
+
+            _lv_hi   = ss.get(f"hi_{lbl}",  sv.get("hi",  150))
+            _lv_cf   = ss.get(f"cf_{lbl}",  sv.get("cf",   80))
+            _lv_ci   = ss.get(f"ci_{lbl}",  sv.get("ci",   80))
+            _lv_gr   = ss.get(f"gr_{lbl}",  sv.get("gr",  350))
+            _lv_ot   = ss.get(f"ot_{lbl}",  sv.get("ot",  250))
+            _lv_ut   = ss.get(f"utilities_{lbl}", sv.get("utilities", 150))
+            _lv_ph   = ss.get(f"phone_{lbl}",     sv.get("phone",      40))
+            _lv_sub  = ss.get(f"subscriptions_{lbl}", sv.get("subscriptions", 40))
+            _lv_gym  = ss.get(f"gym_{lbl}",  sv.get("gym",  30))
+            _lv_dog  = ss.get(f"dog_{lbl}",  sv.get("dog",   0))
+            _lv_fixed = _lv_hi+_lv_cf+_lv_ci+_lv_gr+_lv_ot+_lv_ut+_lv_ph+_lv_sub+_lv_gym+_lv_dog
+
+            _lv_ny   = ss.get(f"ny_{lbl}",  sv.get("n_years", 10))
+            _lv_ha   = ss.get(f"ha_{lbl}",  sv.get("ha", 0.03)*100) / 100
+            _lv_ir   = ss.get(f"ir_{lbl}",  sv.get("ir", 0.05)*100)
+            _lv_fe   = ss.get(f"future_exp_list_{lbl}", sv.get("future_expenses", []))
+            _lv_fe_total = sum(fe.get("amount",0) for fe in _lv_fe)
+            _lv_hs   = ss.get(f"hs_yr_{lbl}",  sv.get("hist_start","2026-01")[:4] if sv.get("hist_start") else "2026")
+            _lv_hs_mo = ss.get(f"hs_mo_{lbl}", "Jan")
+            _lv_hist_start = f"{_lv_hs}-{str(_lv_hs_mo).zfill(2) if str(_lv_hs_mo).isdigit() else _lv_hs_mo}"
+
+            _lbl_income   = f"👤 People & Income — €{_lv_net_s + _lv_net_p:,.0f}/mo net"
+            _lbl_housing  = (f"🏠 Housing & Mortgage — €{_lv_hp:,} · "
+                             f"€{_lv_mort:,.0f}/mo gross · "
+                             f"€{_lv_mri:,.0f}/mo MRI · "
+                             f"{_lv_mr*100:.1f}% rate")
+            _lbl_expenses = f"🧾 Monthly Expenses — €{_lv_fixed:,.0f}/mo total"
+            _lbl_proj     = f"📈 Projection — {_lv_ny}yr · {_lv_ha*100:.1f}% apprec. · {_lv_ir:.1f}% return"
+            _lbl_future   = f"🍼 Future Expenses — {len(_lv_fe)} item(s), €{_lv_fe_total:,.0f}/mo at start"
             _lbl_hist     = f"📅 Historic Data Range — {sv.get('hist_start','2026-01')} → {sv.get('hist_end','2026-03')}"
 
             # ════════════════════════════════════════════════════════════════
             # 1 — PEOPLE & INCOME
             # ════════════════════════════════════════════════════════════════
-            with st.expander(_lbl_income, expanded=False):
+            with st.expander("👤 People & Income", expanded=False):
+                st.caption(_lbl_income.replace("👤 People & Income — ", "📊 "))
                 # ── Income entry mode toggle ──────────────────────────────────
                 _use_net_input = st.toggle(
                     "Enter monthly net income (what arrives in your bank)",
@@ -2190,13 +2443,45 @@ The dashboard automatically applies the correct rate for each year based on your
             # ════════════════════════════════════════════════════════════════
             # 3 — HOUSING & MORTGAGE
             # ════════════════════════════════════════════════════════════════
-            with st.expander(_lbl_housing, expanded=False):
+            with st.expander("🏠 Housing & Mortgage", expanded=False):
+                st.caption(_lbl_housing.replace("🏠 Housing & Mortgage — ", "📊 "))
 
-                rent = st.number_input("Current rent (€/mo)",
-                    value=sv.get("rent", 1850), step=50, min_value=0, key=f"rent_{lbl}",
-                    help="Monthly rent before buying, and the ongoing cost in the Rent scenario throughout. Include service costs.")
+                already_owns = st.checkbox(
+                    "I currently own a home",
+                    value=sv.get("already_owns", False),
+                    key=f"already_owns_{lbl}",
+                    help=(
+                        "Tick if you already own and live in a property. This changes the projections: "
+                        "instead of showing a future purchase, the dashboard uses your current home value "
+                        "and existing mortgage. You can still model selling the property."
+                    )
+                )
 
-                st.markdown("**📆 Purchase date**")
+                if already_owns:
+                    st.markdown("**🏡 Your Current Property**")
+                    _ow1, _ow2 = st.columns(2)
+                    current_home_value = _ow1.number_input(
+                        "Current estimated home value (€)",
+                        value=sv.get("current_home_value", sv.get("house_price", 400000)),
+                        step=5000, min_value=0, key=f"chv_{lbl}",
+                        help="Your best estimate of what your home is worth today. "
+                             "Used for equity calculations, sell proceeds and appreciation projections. "
+                             "Check Funda or a recent WOZ-beschikking for a reference value."
+                    )
+                    house_price = _ow2.number_input(
+                        "Original purchase price (€)",
+                        value=sv.get("house_price", 400000), step=5000, key=f"hp_{lbl}",
+                        help="The price you originally paid. Used to calculate appreciation and buying costs already incurred."
+                    )
+                    rent = 0   # no rent when owning
+                else:
+                    current_home_value = sv.get("current_home_value", sv.get("house_price", 400000))
+                    rent = st.number_input("Current rent (€/mo)",
+                        value=sv.get("rent", 1500), step=50, min_value=0, key=f"rent_{lbl}",
+                        help="Monthly rent before buying, and the ongoing cost in the Rent scenario throughout. Include service costs.")
+
+                if not already_owns:
+                    st.markdown("**📆 Purchase date**")
                 h1, h2 = st.columns(2)
                 by_options = [2026, 2027, 2028]
                 by = h1.selectbox("Purchase year", by_options,
@@ -2207,10 +2492,11 @@ The dashboard automatically applies the correct rate for each year based on your
                     index=bm_options.index(sv.get("bm", 7)), key=f"bm_{lbl}",
                     help="Month of purchase. Mortgage starts from this month.")
 
-                st.markdown("**🏡 Property**")
-                house_price = st.number_input("House price (€)",
-                    value=sv.get("house_price", 550000), step=5000, key=f"hp_{lbl}",
-                    help="Total purchase price. Buying costs (2% overdrachtsbelasting + ~€3,500 notaris) are added automatically.")
+                if not already_owns:
+                    st.markdown("**🏡 Target Property**")
+                    house_price = st.number_input("Target house price (€)",
+                        value=sv.get("house_price", 400000), step=5000, key=f"hp_{lbl}",
+                        help="The price of the house you plan to buy. Buying costs (2% overdrachtsbelasting + ~€3,500 notaris) are added automatically.")
 
                 st.markdown("**💳 Mortgage**")
                 m1, m2 = st.columns(2)
@@ -2244,7 +2530,8 @@ The dashboard automatically applies the correct rate for each year based on your
             # ════════════════════════════════════════════════════════════════
             # 4 — MONTHLY EXPENSES
             # ════════════════════════════════════════════════════════════════
-            with st.expander(_lbl_expenses, expanded=False):
+            with st.expander("🧾 Monthly Expenses", expanded=False):
+                st.caption(_lbl_expenses.replace("🧾 Monthly Expenses — ", "📊 "))
                 eg    = sv.get("exp_growth", {})
                 en    = sv.get("exp_notes",  {})   # per-category free-text notes
                 def _eg_get(key, default=0.02):
@@ -2405,7 +2692,8 @@ The dashboard automatically applies the correct rate for each year based on your
             # ════════════════════════════════════════════════════════════════
             # 5 — PROJECTION ASSUMPTIONS
             # ════════════════════════════════════════════════════════════════
-            with st.expander(_lbl_proj, expanded=False):
+            with st.expander("📈 Projection Assumptions", expanded=False):
+                st.caption(_lbl_proj.replace("📈 Projection — ", "📊 "))
                 w1, w2 = st.columns(2)
                 savings = w1.number_input("Starting savings (€)",
                     value=sv.get("savings", 80000), step=5000, key=f"sv_{lbl}",
@@ -2442,7 +2730,8 @@ The dashboard automatically applies the correct rate for each year based on your
             # ════════════════════════════════════════════════════════════════
             # 6 — FUTURE RECURRING EXPENSES  (paid)
             # ════════════════════════════════════════════════════════════════
-            with st.expander(_lbl_future + (" 🔒" if not IS_PAID else ""), expanded=False):
+            with st.expander("🍼 Future Recurring Expenses" + (" 🔒" if not IS_PAID else ""), expanded=False):
+                st.caption(_lbl_future.replace("🍼 Future Recurring Expenses — ", "📊 "))
                 if not IS_PAID:
                     _paid_gate("Future Recurring Expenses", icon="🍼")
                     st.caption(
@@ -2549,7 +2838,8 @@ The dashboard automatically applies the correct rate for each year based on your
             # ════════════════════════════════════════════════════════════════
             # 7 — HISTORIC DATA RANGE  (paid)
             # ════════════════════════════════════════════════════════════════
-            with st.expander(_lbl_hist + (" 🔒" if not IS_PAID else ""), expanded=False):
+            with st.expander("📅 Historic Data Range" + (" 🔒" if not IS_PAID else ""), expanded=False):
+                st.caption(_lbl_hist.replace("📅 Historic Data Range — ", "📊 "))
                 if not IS_PAID:
                     _paid_gate("Actuals Tracking — Historic Date Range", icon="📅")
                     st.caption("Configure the date range for tracking your real income and savings in the Actuals tab.")
@@ -2601,6 +2891,7 @@ The dashboard automatically applies the correct rate for each year based on your
                 rent=rent, by=by, bm=bm,
                 house_price=house_price, dp=dp, mort_rate=mr,
                 mort_type=mort_type,
+                already_owns=already_owns, current_home_value=current_home_value,
                 sell_house=sell_house, sy=sy, sm=sm,
                 hi=hi, cf=cf, ci=ci, gr=gr, ot=ot,
                 utilities=utilities, phone=phone,
@@ -2629,33 +2920,7 @@ The dashboard automatically applies the correct rate for each year based on your
     if "B" not in params:
         params["B"] = params["A"].copy()
 
-    # ── Live summary cards ───────────────────────────────────────────────────
-    st.divider()
-    st.markdown("### 📌 Quick Summary")
-    sum_cols = st.columns(2) if ab_mode else [st.columns(1)[0]]
 
-    for idx, lbl in enumerate(labels):
-        p = params[lbl]
-        _a30_s0 = p.get("ruling_s", True)  and p.get("rs_s", p["rs"]) <= 2026 < p.get("re_s", p["re"])
-        _a30_p0 = p.get("ruling_p", False) and p.get("rs_p", p["rs"]) <= 2026 < p.get("re_p", p["re"])
-        net_s = net_monthly_calc(p["inc_s"], 2026, _a30_s0)
-        net_p = net_monthly_calc(p["inc_p"], 2026, _a30_p0) if p["partner"] else 0
-        n_p   = 2 if p["partner"] else 1
-        # Jan 2026 snapshot — no growth applied (yrs_e = 0)
-        fixed = (p["hi"] + p["cf"] + p["ci"] + p["gr"] + p["ot"]
-                 + p.get("utilities",0) + p.get("phone",0)
-                 + p.get("subscriptions",0) + p.get("gym",0) + p.get("dog",0))
-        mp    = mort_payment(p["house_price"], p["dp"], p["mort_rate"])
-        with (sum_cols[idx] if ab_mode else sum_cols[0]):
-            color = "#2ecc71" if lbl == "A" else "#3498db"
-            _qs_name = p.get("scenario_label") or f"Scenario {lbl}"
-            st.markdown(f"<b style='color:{color}'>{_qs_name} — Jan 2026 snapshot</b>",
-                        unsafe_allow_html=True)
-            sc1, sc2, sc3, sc4 = st.columns(4)
-            sc1.metric("Net Income/mo", f"€{net_s+net_p:,.0f}")
-            sc2.metric("Fixed Expenses/mo", f"€{fixed:,.0f}")
-            sc3.metric("Rent/mo", f"€{p['rent']:,.0f}")
-            sc4.metric("Future Mortgage/mo", f"€{mp:,.0f}")
 
 
     # ── Navigate to next tab ────────────────────────────────────────────────────
@@ -2915,24 +3180,91 @@ with tabs[1]:
     st.divider()
     st.caption(f"Showing **{cur_lbl}** — current month in projection.")
     _has_kot = pa.get("n_kdv",0) > 0 or pa.get("n_bso",0) > 0
-    # Use 3 metrics per row, stacked neatly — works on mobile and desktop
-    _km1, _km2, _km3 = st.columns(3)
-    _km1.metric("💰 Net Income",     f"€{cur_net:,.0f}",
+
+    # ── All KPIs in one row ──────────────────────────────────────────────────
+    _km_cols = st.columns(5 if _has_kot else 4)
+    _km_cols[0].metric("💰 Net Income", f"€{cur_net:,.0f}",
         help=f"Combined household net income in {cur_lbl} after Box 1 tax, ZVW, AHK, and arbeidskorting.")
-    _km2.metric("💸 Total Expenses", f"€{cur_exp:,.0f}",
+    _km_cols[1].metric("💸 Total Expenses", f"€{cur_exp:,.0f}",
         help=f"All fixed expenses in {cur_lbl}: housing, categories from Setup, net of MRI and subsidy credits.")
     _sav_sign = "surplus" if cur_sav >= 0 else "deficit"
-    _km3.metric("🏦 Potential Savings", f"€{cur_sav:,.0f}",
+    _km_cols[2].metric("🏦 Potential Savings", f"€{cur_sav:,.0f}",
         delta=_sav_sign, delta_color="normal" if cur_sav >= 0 else "inverse",
         help=f"Net income minus total expenses in {cur_lbl}.")
-    _km4, _km5 = st.columns(2)
-    _km4.metric("🎯 30% Ruling Benefit", f"€{cur_ruling_ben:,.0f}",
-        help="Extra net income this month because only 70% of gross is taxable. Drops to zero when ruling expires.")
+    _km_cols[3].metric("🎯 Current 30% Ruling Benefit", f"€{cur_ruling_ben:,.0f}",
+        help=f"Extra net income this month from the 30% ruling — the difference between your taxed-on-70% income (€{_nm_s_on:,.0f}/mo) and your income without the ruling (€{_nm_s_off:,.0f}/mo). Drops to zero when the ruling expires.")
     if _has_kot:
-        _km5.metric("👶 Kinderopvangtoeslag", f"€{cur_kot:,.0f}",
+        _km_cols[4].metric("👶 Kinderopvangtoeslag", f"€{cur_kot:,.0f}",
             help="Monthly childcare benefit (dagopvang/BSO), income-tested.")
-    else:
-        _km5.metric("📅 Period", cur_lbl, help="Current month shown in the KPIs above.")
+
+    # ── 30% Ruling impact waterfall ─────────────────────────────────────────
+    if _a30_s_cur or _a30_p_cur:
+        st.divider()
+        st.markdown("#### 💡 30% Ruling Impact — Monthly Income vs Expenses")
+        st.caption(
+            "This waterfall shows your current monthly financial position with and without the 30% ruling. "
+            "If the 'Net without ruling' bar is still above zero, your income covers expenses after the ruling expires."
+        )
+        # Values for the waterfall
+        _wf_net_off  = _nm_s_off + (_nm_p_off if p["partner"] else 0)   # net income WITHOUT ruling
+        _wf_benefit  = cur_net - _wf_net_off                             # ruling benefit = difference
+        _wf_exp      = cur_exp                                           # total expenses
+
+        _wf_surplus_off = _wf_net_off - _wf_exp                         # leftover without ruling
+        _wf_surplus_on  = cur_net     - _wf_exp                         # leftover with ruling
+
+        fig_ruling_wf = go.Figure(go.Waterfall(
+            orientation="v",
+            measure=["absolute", "relative", "relative", "total"],
+            x=[
+                f"Net Income<br>(no ruling)",
+                f"30% Ruling<br>Benefit",
+                f"Total<br>Expenses",
+                f"Remaining<br>({'with' if _a30_s_cur else 'no'} ruling)",
+            ],
+            y=[_wf_net_off, _wf_benefit, -_wf_exp, 0],
+            text=[
+                f"€{_wf_net_off:,.0f}",
+                f"+€{_wf_benefit:,.0f}",
+                f"−€{_wf_exp:,.0f}",
+                f"€{_wf_surplus_on:,.0f}",
+            ],
+            textposition="outside",
+            connector=dict(line=dict(color="rgba(255,255,255,0.2)")),
+            increasing=dict(marker_color="#2ecc71"),
+            decreasing=dict(marker_color="#e74c3c"),
+            totals=dict(marker_color="#3498db"),
+        ))
+        # Add a horizontal line at 0 to make surplus/deficit obvious
+        fig_ruling_wf.add_hline(y=0, line_color="#f1c40f", line_width=1.5, line_dash="dot")
+        # Annotate the "without ruling" income level
+        fig_ruling_wf.add_hline(
+            y=_wf_net_off, line_color="#e74c3c", line_width=1, line_dash="dash",
+            annotation_text=f"Income without ruling: €{_wf_net_off:,.0f}",
+            annotation_position="bottom right",
+            annotation_font=dict(size=10, color="#e74c3c"),
+        )
+        fig_ruling_wf.update_layout(**chart_layout(
+            f"30% Ruling Impact — {cur_lbl}", "€/month", height=380
+        ))
+        st.plotly_chart(fig_ruling_wf, use_container_width=True, key="fig_ruling_waterfall")
+
+        # Plain-language callout based on surplus without ruling
+        if _wf_surplus_off >= 0:
+            st.success(
+                f"✅ Even without the 30% ruling your income (€{_wf_net_off:,.0f}/mo) "
+                f"covers total expenses (€{_wf_exp:,.0f}/mo) — leaving **€{_wf_surplus_off:,.0f}/mo** surplus. "
+                f"The ruling adds an extra €{_wf_benefit:,.0f}/mo on top.",
+                icon="💪"
+            )
+        else:
+            st.error(
+                f"⚠️ Without the 30% ruling your income (€{_wf_net_off:,.0f}/mo) "
+                f"would fall **€{abs(_wf_surplus_off):,.0f}/mo short** of expenses (€{_wf_exp:,.0f}/mo). "
+                f"The ruling currently bridges this gap. "
+                f"Consider reducing expenses or building savings before Jan {_re_s or ''}.",
+                icon="🔔"
+            )
 
     st.divider()
 
